@@ -67,31 +67,35 @@
         <div id="dashboard-alerts"></div>
 
         <div class="kpi-grid">
-          <div class="kpi-card bg-lime">
+          <div class="kpi-card bg-lime" style="cursor:pointer;" onclick="jumpToFacts('approved')">
             <div class="kpi-label">Approved Facts</div>
             <div class="kpi-value" id="kpi-approved-facts">0</div>
           </div>
-          <div class="kpi-card bg-yellow">
+          <div class="kpi-card bg-yellow" style="cursor:pointer;" onclick="jumpToFacts('pending_review')">
             <div class="kpi-label">Pending Consent</div>
             <div class="kpi-value" id="kpi-pending-facts">0</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Tracked Jobs</div>
-            <div class="kpi-value" id="kpi-jobs">0</div>
+          <div class="kpi-card" style="cursor:pointer;" onclick="jumpToJobs('potential')">
+            <div class="kpi-label">Potential Jobs</div>
+            <div class="kpi-value" id="kpi-potential-jobs">0</div>
           </div>
-          <div class="kpi-card bg-mint">
+          <div class="kpi-card bg-lime" style="cursor:pointer;" onclick="jumpToJobs('applied')">
+            <div class="kpi-label">Jobs Applied To</div>
+            <div class="kpi-value" id="kpi-applied-jobs">0</div>
+          </div>
+          <div class="kpi-card bg-mint" style="cursor:pointer;" onclick="jumpToJobs('interviews')">
             <div class="kpi-label">Active Interviews</div>
             <div class="kpi-value" id="kpi-interviews">0</div>
           </div>
-          <div class="kpi-card bg-blue">
-            <div class="kpi-label">Emails Sent</div>
+          <div class="kpi-card bg-blue" style="cursor:pointer;" onclick="jumpToEmails('outbound_sent')">
+            <div class="kpi-label">Mails Sent</div>
             <div class="kpi-value" id="kpi-sent">0</div>
           </div>
-          <div class="kpi-card bg-violet">
+          <div class="kpi-card bg-violet" style="cursor:pointer;" onclick="jumpToEmails('inbound_reply')">
             <div class="kpi-label">Inbox Replies</div>
             <div class="kpi-value" id="kpi-replies">0</div>
           </div>
-          <div class="kpi-card bg-coral">
+          <div class="kpi-card bg-coral" style="cursor:pointer;" onclick="switchView('forms')">
             <div class="kpi-label">Forms Awaiting OK</div>
             <div class="kpi-value" id="kpi-forms">0</div>
           </div>
@@ -264,7 +268,8 @@
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
-              <h2 class="card-title">Add Potential Job &amp; Run Ghost-Job Triage</h2>
+              <h2 class="card-title">Custom Job Input &amp; Ghost-Job Triage</h2>
+              <span class="tag tag-lime">CUSTOM APPLICATION</span>
             </div>
             <div class="form-grid">
               <div>
@@ -280,15 +285,34 @@
                 <input type="url" id="job-url" placeholder="https://jobs.ashbyhq.com/..." />
               </div>
               <div>
+                <label class="field-label">Location / Remote</label>
+                <input type="text" id="job-location" placeholder="Remote, US" />
+              </div>
+              <div>
                 <label class="field-label">Days Old</label>
                 <input type="number" id="job-days" value="1" min="0" />
               </div>
+              <div>
+                <label class="field-label">Initial Stage</label>
+                <select id="job-stage">
+                  <option value="Discovered">Potential (Discovered)</option>
+                  <option value="Saved">Potential (Saved)</option>
+                  <option value="Applied">Already Applied</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom:10px;">
+              <label class="field-label">Job Posting Description (For Ghost Audit, XYZ Keywords &amp; Salary Anchor)</label>
+              <textarea id="job-posting" placeholder="Paste full job description including salary range if posted..."></textarea>
             </div>
             <div style="margin-bottom:12px;">
-              <label class="field-label">Job Posting Description (For Ghost Audit &amp; Salary Anchor)</label>
-              <textarea id="job-posting" placeholder="Paste job description including salary range if posted..."></textarea>
+              <label class="field-label">Custom Notes / Referral Contact / Special Focus</label>
+              <input type="text" id="job-notes" placeholder="e.g. Referred by Jane Doe; emphasize Kubernetes & Go latency wins" />
             </div>
-            <button class="btn btn-lime" onclick="addJob()">Add &amp; Triage Job</button>
+            <div class="btn-row">
+              <button class="btn btn-lime" onclick="addJob(false)">Add Custom Job</button>
+              <button class="btn btn-blue" onclick="addJob(true)">Add &amp; Build Form Plan</button>
+            </div>
           </div>
 
           <div class="card">
@@ -313,7 +337,13 @@
 
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">Job Pipeline &amp; Custom Application Workspace</h2>
+            <h2 class="card-title">Potential Jobs &amp; Jobs Applied To</h2>
+            <div class="subtabs" id="job-filter-tabs" style="margin-bottom:0;">
+              <button class="subtab active" data-jfilter="all" onclick="filterJobs('all', this)">All (<span id="cnt-jobs-all">0</span>)</button>
+              <button class="subtab" data-jfilter="potential" onclick="filterJobs('potential', this)">Potential to Apply (<span id="cnt-jobs-potential">0</span>)</button>
+              <button class="subtab" data-jfilter="applied" onclick="filterJobs('applied', this)">Jobs Applied To (<span id="cnt-jobs-applied">0</span>)</button>
+              <button class="subtab" data-jfilter="interviews" onclick="filterJobs('interviews', this)">Interviews &amp; Offers (<span id="cnt-jobs-interviews">0</span>)</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -421,11 +451,11 @@
         <div class="card">
           <div class="card-header">
             <h2 class="card-title">Complete Mailbox Ledger</h2>
-            <div class="subtabs" style="margin-bottom:0;">
-              <button class="subtab active" onclick="filterEmails('all', this)">All Mail</button>
-              <button class="subtab" onclick="filterEmails('inbound_reply', this)">Inbox Replies</button>
-              <button class="subtab" onclick="filterEmails('pending_approval', this)">Outbox Pending</button>
-              <button class="subtab" onclick="filterEmails('outbound_sent', this)">Sent Mail</button>
+            <div class="subtabs" id="email-filter-tabs" style="margin-bottom:0;">
+              <button class="subtab active" data-efilter="all" onclick="filterEmails('all', this)">All Mail</button>
+              <button class="subtab" data-efilter="inbound_reply" onclick="filterEmails('inbound_reply', this)">Inbox Replies</button>
+              <button class="subtab" data-efilter="pending_approval" onclick="filterEmails('pending_approval', this)">Outbox Pending</button>
+              <button class="subtab" data-efilter="outbound_sent" onclick="filterEmails('outbound_sent', this)">Sent Mail</button>
             </div>
           </div>
           <div class="table-wrap">

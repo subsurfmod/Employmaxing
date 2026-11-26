@@ -4,6 +4,7 @@ let STATE = {
   facts: [],
   factFilter: 'all',
   jobs: [],
+  jobFilter: 'all',
   emails: [],
   emailFilter: 'all',
   forms: [],
@@ -79,12 +80,32 @@ async function refreshAll() {
   }
 }
 
+function jumpToFacts(status) {
+  switchView('consent');
+  const btn = document.querySelector(`#fact-filter-tabs .subtab[data-filter="${status}"]`);
+  filterFacts(status, btn);
+}
+
+function jumpToJobs(flt) {
+  switchView('jobs');
+  const btn = document.querySelector(`#job-filter-tabs .subtab[data-jfilter="${flt}"]`);
+  filterJobs(flt, btn);
+}
+
+function jumpToEmails(flt) {
+  switchView('mailbox');
+  const btn = document.querySelector(`#email-filter-tabs .subtab[data-efilter="${flt}"]`);
+  filterEmails(flt, btn);
+}
+
 function renderDashboard(dash) {
   const c = dash.counts || {};
+  const potentialCount = Math.max(0, (c.jobs_total ?? 0) - (c.jobs_applied ?? 0));
   document.getElementById('footer-datadir').textContent = `DATA: ${dash.data_dir}`;
   document.getElementById('kpi-approved-facts').textContent = c.facts_approved ?? 0;
   document.getElementById('kpi-pending-facts').textContent = c.facts_pending_consent ?? 0;
-  document.getElementById('kpi-jobs').textContent = c.jobs_total ?? 0;
+  document.getElementById('kpi-potential-jobs').textContent = potentialCount;
+  document.getElementById('kpi-applied-jobs').textContent = c.jobs_applied ?? 0;
   document.getElementById('kpi-interviews').textContent = c.jobs_interviews ?? 0;
   document.getElementById('kpi-sent').textContent = c.emails_sent ?? 0;
   document.getElementById('kpi-replies').textContent = c.inbox_replies ?? 0;
@@ -300,7 +321,7 @@ function copyText(txt) {
   navigator.clipboard.writeText(txt).then(() => toast('Copied to clipboard!'));
 }
 
-async function addJob() {
+async function addJob(buildFormAfter = false) {
   try {
     const res = await api('/api/jobs', {
       method: 'POST',
@@ -308,16 +329,22 @@ async function addJob() {
         company: document.getElementById('job-company').value.trim(),
         role: document.getElementById('job-role').value.trim(),
         url: document.getElementById('job-url').value.trim(),
+        location: document.getElementById('job-location').value.trim(),
         days_old: parseInt(document.getElementById('job-days').value || '1', 10),
+        stage: document.getElementById('job-stage').value,
         posting_text: document.getElementById('job-posting').value.trim(),
+        notes: document.getElementById('job-notes').value.trim(),
       }),
     });
     toast(`Added ${res.job.company} (${res.job.priority_tier})`);
-    document.getElementById('job-company').value = '';
-    document.getElementById('job-role').value = '';
-    document.getElementById('job-url').value = '';
-    document.getElementById('job-posting').value = '';
-    refreshAll();
+    ['job-company', 'job-role', 'job-url', 'job-location', 'job-posting', 'job-notes'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    if (buildFormAfter) {
+      await planFormForJob(res.id);
+    } else {
+      refreshAll();
+    }
   } catch (e) { toast(e.message); }
 }
 
@@ -339,14 +366,41 @@ async function loadDorks() {
 }
 
 const STAGES = ['Discovered', 'Saved', 'Tailored', 'Applied', 'Phone Screen', 'Technical', 'Onsite / Final', 'Offer', 'Accepted', 'Rejected', 'Withdrawn'];
+const POTENTIAL_STAGES = new Set(['Discovered', 'Saved', 'Tailored']);
+const INTERVIEW_STAGES = new Set(['Phone Screen', 'Technical', 'Onsite / Final', 'Offer', 'Accepted']);
+
+function filterJobs(flt, btn) {
+  STATE.jobFilter = flt;
+  document.querySelectorAll('#job-filter-tabs .subtab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderJobs();
+}
 
 function renderJobs() {
+  const allJobs = STATE.jobs || [];
+  const potentialJobs = allJobs.filter(j => POTENTIAL_STAGES.has(j.stage));
+  const appliedJobs = allJobs.filter(j => !POTENTIAL_STAGES.has(j.stage));
+  const interviewJobs = allJobs.filter(j => INTERVIEW_STAGES.has(j.stage));
+
+  document.getElementById('cnt-jobs-all').textContent = allJobs.length;
+  document.getElementById('cnt-jobs-potential').textContent = potentialJobs.length;
+  document.getElementById('cnt-jobs-applied').textContent = appliedJobs.length;
+  document.getElementById('cnt-jobs-interviews').textContent = interviewJobs.length;
+
+  const visible = STATE.jobFilter === 'potential'
+    ? potentialJobs
+    : STATE.jobFilter === 'applied'
+      ? appliedJobs
+      : STATE.jobFilter === 'interviews'
+        ? interviewJobs
+        : allJobs;
+
   const tbody = document.getElementById('jobs-tbody');
-  if (!STATE.jobs.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No jobs tracked yet. Add a potential job above or run Employmaxing job-search.</div></td></tr>';
+  if (!visible.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No jobs in this bucket yet. Add a custom job above or adjust filter tabs.</div></td></tr>';
     return;
   }
-  tbody.innerHTML = STATE.jobs.map(j => {
+  tbody.innerHTML = visible.map(j => {
     const ghostCls = j.ghost_risk === 'HIGH' ? 'tag-coral' : (j.ghost_risk === 'LOW' ? 'tag-lime' : 'tag-yellow');
     const stageOpts = STAGES.map(s => `<option value="${s}" ${j.stage === s ? 'selected' : ''}>${s}</option>`).join('');
     return `
