@@ -1,7 +1,7 @@
 {
   "name": "employmaxing",
-  "description": "Empirical interview-maximization & transparent career automation Agent Skill with Neo-Brutalist local web dashboard, IMAP/SMTP mailbox automation, LinkedIn discrepancy auditor, and complex ATS CDP form filling",
-  "version": "1.0.0",
+  "description": "Zero-CLI local-first interview-maximization Agent Skill with First-Time Setup Wizard, 2FA-safe Google/Microsoft OAuth2 mail integration, Neo-Brutalist web UI, LinkedIn discrepancy auditor, and complex ATS CDP form filling",
+  "version": "1.1.0",
   "author": {
     "name": "subsurfmod",
     "url": "https://github.com/subsurfmod"

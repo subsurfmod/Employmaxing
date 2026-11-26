@@ -23,11 +23,15 @@ description: >-
 
 ---
 
-## Quick Start Commands (Portable CLI: `./bin/employmaxing`)
+## Quick Start (Zero-CLI First!)
+
+Launch the local Neo-Brutalist Web App — it automatically opens `http://127.0.0.1:8787` and guides brand-new users through **`00 // Get Started`** (drag-and-drop resume upload, auto-extracted profile/requirements, and 1-click **Sign in with Google / Sign in with Microsoft** OAuth2):
 
 ```bash
-# 1. Launch the Neo-Brutalist Local Web Dashboard (http://127.0.0.1:8787)
 ./bin/employmaxing serve
+```
+
+Prefer CLI commands for scripted/agent runs? Every capability is also available via `./bin/employmaxing`:
 
 # 2. Discover & build a complete Personal & Career Profile (lands in Consent Ledger)
 ./bin/employmaxing enrich --resume /path/to/resume.pdf --linkedin /path/to/Profile.pdf --github <username> --website <url>

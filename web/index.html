@@ -12,10 +12,14 @@
     <aside class="sidebar">
       <div class="brand-box">
         <div class="brand-title">EMPLOYMAXING</div>
-        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.0</div>
+        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.1</div>
       </div>
 
       <nav class="nav-list" id="nav-list">
+        <button class="nav-btn" data-view="onboarding">
+          <span>00 // Get Started</span>
+          <span class="nav-badge" id="badge-onboarding">SETUP</span>
+        </button>
         <button class="nav-btn active" data-view="dashboard">
           <span>01 // Overview</span>
         </button>
@@ -51,6 +55,219 @@
 
     <!-- Main Workspace -->
     <main class="main-content">
+      <!-- 00 // ZERO-CLI FIRST-TIME GET STARTED WIZARD -->
+      <section id="view-onboarding" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Get Started // First-Time Setup</h1>
+            <p class="page-sub">Zero CLI required. Drop your resume, confirm auto-pulled info, and sign in to ONE mail provider (2FA-native OAuth2).</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-yellow" onclick="switchView('dashboard')">Skip to Dashboard</button>
+          </div>
+        </div>
+
+        <div class="stepper" id="wizard-stepper">
+          <button class="step-pill active" data-step="1" onclick="goWizardStep(1)">Step 1 // Resume &amp; Links</button>
+          <button class="step-pill" data-step="2" onclick="goWizardStep(2)">Step 2 // Verify Info</button>
+          <button class="step-pill" data-step="3" onclick="goWizardStep(3)">Step 3 // Connect Mail</button>
+          <button class="step-pill" data-step="4" onclick="goWizardStep(4)">Step 4 // Launch</button>
+        </div>
+
+        <!-- STEP 1: DROP RESUME & LINKS -->
+        <div class="wizard-panel active" id="wizard-step-1">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">1. Point to Your Resume &amp; Online Links</h2>
+              <span class="tag tag-lime">AUTO-EXTRACTS ALL FIELDS</span>
+            </div>
+            <div class="grid-2" style="margin-bottom:16px;">
+              <div class="dropzone" id="dz-resume" onclick="document.getElementById('wiz-resume-file').click()">
+                <input type="file" id="wiz-resume-file" accept=".pdf,.docx,.doc,.md,.txt" onchange="handleFilePick(this, 'resume')" />
+                <div class="dropzone-title">Click or Drop Your Resume / CV</div>
+                <div class="mono" style="font-size:0.76rem;margin-top:4px;">Supports PDF, DOCX, Markdown, or TXT</div>
+                <div class="dropzone-file" id="dz-resume-label">No file selected yet</div>
+              </div>
+              <div class="dropzone" id="dz-linkedin" onclick="document.getElementById('wiz-linkedin-file').click()">
+                <input type="file" id="wiz-linkedin-file" accept=".pdf,.zip,.md,.txt" onchange="handleFilePick(this, 'linkedin')" />
+                <div class="dropzone-title">Optional: Drop LinkedIn Profile.pdf / ZIP</div>
+                <div class="mono" style="font-size:0.76rem;margin-top:4px;">LinkedIn &rarr; More &rarr; Save to PDF (for discrepancy audit)</div>
+                <div class="dropzone-file" id="dz-linkedin-label">Optional (can add anytime)</div>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div>
+                <label class="field-label">LinkedIn Profile URL</label>
+                <input type="url" id="wiz-linkedin-url" placeholder="https://linkedin.com/in/yourname" />
+              </div>
+              <div>
+                <label class="field-label">GitHub Username or URL</label>
+                <input type="text" id="wiz-github" placeholder="e.g. subsurfmod (pulls stars &amp; repos)" />
+              </div>
+              <div>
+                <label class="field-label">Personal Website / Portfolio URL</label>
+                <input type="url" id="wiz-website" placeholder="https://yoursite.dev" />
+              </div>
+            </div>
+
+            <details class="brutal-details">
+              <summary>Prefer to paste resume text instead of uploading a file?</summary>
+              <div style="margin-top:10px;">
+                <textarea id="wiz-resume-text" placeholder="Paste full resume text here..."></textarea>
+              </div>
+            </details>
+
+            <div class="btn-row" style="margin-top:14px;">
+              <button class="btn btn-lime" onclick="wizardExtractStep1()">Pull My Info From Resume &amp; Links &rarr;</button>
+              <button class="btn" onclick="goWizardStep(2)">Already Uploaded? Go to Step 2</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: VERIFY AUTO-PULLED PROFILE & FIRST-TIME REQUIREMENTS -->
+        <div class="wizard-panel" id="wizard-step-2">
+          <div id="wiz-extract-banner"></div>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">2. Verify Pulled Details &amp; First-Time Requirements</h2>
+              <span class="tag tag-yellow">PRE-FILLED FROM YOUR RESUME</span>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Full Name</label>
+                <input type="text" id="w2-name" placeholder="Alex Mercer" />
+              </div>
+              <div>
+                <label class="field-label">Email Address</label>
+                <input type="email" id="w2-email" placeholder="alex@example.com" />
+              </div>
+              <div>
+                <label class="field-label">Phone</label>
+                <input type="text" id="w2-phone" placeholder="(415) 555-0192" />
+              </div>
+              <div>
+                <label class="field-label">City / Metro</label>
+                <input type="text" id="w2-city" placeholder="San Francisco, CA" />
+              </div>
+              <div>
+                <label class="field-label">Country</label>
+                <input type="text" id="w2-country" value="United States" />
+              </div>
+              <div>
+                <label class="field-label">LinkedIn URL</label>
+                <input type="url" id="w2-linkedin" placeholder="https://linkedin.com/in/..." />
+              </div>
+              <div>
+                <label class="field-label">GitHub URL</label>
+                <input type="text" id="w2-github" placeholder="https://github.com/..." />
+              </div>
+              <div>
+                <label class="field-label">Portfolio / Website</label>
+                <input type="url" id="w2-website" placeholder="https://..." />
+              </div>
+            </div>
+
+            <div style="border-top:2px solid #111;padding-top:14px;margin-top:6px;">
+              <div style="font-weight:900;text-transform:uppercase;margin-bottom:10px;">Job Search Targets &amp; Knockout-Safe Form Defaults</div>
+              <div class="form-grid">
+                <div>
+                  <label class="field-label">Target Roles (Comma-Separated)</label>
+                  <input type="text" id="w2-roles" placeholder="Staff Backend Engineer, Platform Engineer" />
+                </div>
+                <div>
+                  <label class="field-label">Work Location Preference</label>
+                  <select id="w2-loc-pref">
+                    <option value="Remote">Remote</option>
+                    <option value="Hybrid">Hybrid</option>
+                    <option value="Onsite">Onsite</option>
+                    <option value="Remote or Hybrid">Remote or Hybrid</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">Minimum Salary Floor</label>
+                  <input type="text" id="w2-salary" placeholder="$180,000" />
+                </div>
+                <div>
+                  <label class="field-label">Dealbreakers (Comma-Separated)</label>
+                  <input type="text" id="w2-dealbreakers" placeholder="No staffing agencies, no crypto" />
+                </div>
+                <div>
+                  <label class="field-label">Authorized to Work?</label>
+                  <select id="w2-work-auth">
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">Require Visa Sponsorship?</label>
+                  <select id="w2-sponsorship">
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label">Notice Period / Earliest Start</label>
+                  <input type="text" id="w2-notice" value="2 weeks from offer acceptance" />
+                </div>
+                <div>
+                  <label class="field-label">EEO Voluntary Disclosures</label>
+                  <input type="text" id="w2-eeo" value="Decline to self-identify" />
+                </div>
+              </div>
+            </div>
+
+            <div style="margin:12px 0;padding:12px;border:2px solid #111;background:#FFFDF0;">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:800;">
+                <input type="checkbox" id="w2-approve-all" checked style="width:18px;height:18px;" />
+                <span>Approve all extracted resume &amp; link facts now (you can still edit or exclude any individual fact anytime in 02 // Info &amp; Consent)</span>
+              </label>
+            </div>
+
+            <div id="wiz-facts-preview" style="margin-bottom:14px;"></div>
+
+            <div class="btn-row">
+              <button class="btn" onclick="goWizardStep(1)">&larr; Back</button>
+              <button class="btn btn-lime" onclick="wizardSaveStep2()">Save Profile &amp; Connect Mail &rarr;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: CONNECT ONE MAIL PROVIDER (OAUTH2 / 2FA NATIVE) -->
+        <div class="wizard-panel" id="wizard-step-3">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">3. Connect ONE Mail Provider (2FA-Safe OAuth2)</h2>
+              <span class="tag tag-blue">SINGLE PROVIDER ONLY</span>
+            </div>
+            <div id="wiz-mail-mount"></div>
+            <div class="btn-row" style="margin-top:18px;border-top:2px solid #111;padding-top:14px;">
+              <button class="btn" onclick="goWizardStep(2)">&larr; Back</button>
+              <button class="btn btn-lime" onclick="goWizardStep(4)">Finish Setup &rarr;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 4: LAUNCHPAD -->
+        <div class="wizard-panel" id="wizard-step-4">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">4. You're Ready to Employmax!</h2>
+              <span class="tag tag-lime">ALL SYSTEMS GO</span>
+            </div>
+            <div class="banner ok">
+              <span>Your Master Profile, ATS Form Defaults, Preferences, and Transparency Ledger are saved locally in ~/.employmaxing — zero CLI required from here.</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-black" onclick="switchView('dashboard')">Open Command Overview</button>
+              <button class="btn btn-coral" onclick="switchView('profile')">Audit LinkedIn vs. Resume</button>
+              <button class="btn btn-lime" onclick="switchView('jobs')">Find &lt;48h Fresh Jobs</button>
+              <button class="btn btn-blue" onclick="switchView('mailbox')">Open Mailbox &amp; Replies</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 01 // OVERVIEW -->
       <section id="view-dashboard" class="view-section active">
         <div class="top-bar">
@@ -59,6 +276,7 @@
             <p class="page-sub">Full visibility into every fact used, every email sent, every reply received, and every ATS form planned.</p>
           </div>
           <div class="btn-row">
+            <button class="btn btn-black" onclick="switchView('onboarding')">First-Time Setup</button>
             <button class="btn btn-yellow" onclick="switchView('consent')">Review Planned Info</button>
             <button class="btn btn-lime" onclick="scanInboxNow()">Scan Mailbox Now</button>
           </div>
@@ -131,17 +349,17 @@
 
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">Discover &amp; Enrich Your Profile (Resume, LinkedIn, GitHub, Portfolio)</h2>
+            <h2 class="card-title">Upload &amp; Discover Additional Info (Resume, LinkedIn, GitHub, Portfolio)</h2>
             <span class="tag tag-yellow">NEW DISCOVERIES LAND IN PENDING</span>
           </div>
           <div class="form-grid">
             <div>
-              <label class="field-label">Resume File Path (PDF/DOCX/MD)</label>
-              <input type="text" id="enrich-resume-path" placeholder="/path/to/resume.pdf" />
+              <label class="field-label">Upload Resume (PDF/DOCX/MD)</label>
+              <input type="file" id="enrich-resume-file" accept=".pdf,.docx,.doc,.md,.txt" />
             </div>
             <div>
-              <label class="field-label">LinkedIn Export Path (Profile.pdf / ZIP)</label>
-              <input type="text" id="enrich-linkedin-path" placeholder="/path/to/Profile.pdf" />
+              <label class="field-label">Upload LinkedIn (Profile.pdf / ZIP)</label>
+              <input type="file" id="enrich-linkedin-file" accept=".pdf,.zip,.md,.txt" />
             </div>
             <div>
               <label class="field-label">GitHub Username or URL</label>
@@ -151,10 +369,6 @@
               <label class="field-label">Personal Website / Portfolio URL</label>
               <input type="url" id="enrich-website" placeholder="https://yoursite.dev" />
             </div>
-          </div>
-          <div style="margin-bottom:12px;">
-            <label class="field-label">Or Paste Resume / CV Text Directly</label>
-            <textarea id="enrich-resume-text" placeholder="Paste full resume text here if you prefer not to supply a file path..."></textarea>
           </div>
           <button class="btn btn-black" onclick="runEnrichment()">Run Transparent Discovery</button>
         </div>
@@ -243,8 +457,8 @@
               <span class="tag tag-coral">DATES / TITLES / #OPENTOWORK / SEO</span>
             </div>
             <div style="margin-bottom:10px;">
-              <label class="field-label">LinkedIn Save-to-PDF / Export Path (Optional)</label>
-              <input type="text" id="li-audit-path" placeholder="/path/to/Profile.pdf" />
+              <label class="field-label">Upload LinkedIn Save-to-PDF or Data Export ZIP</label>
+              <input type="file" id="li-audit-file" accept=".pdf,.zip,.md,.txt" />
             </div>
             <div style="margin-bottom:10px;">
               <label class="field-label">Or Paste Full LinkedIn Profile Text</label>
@@ -307,7 +521,7 @@
             </div>
             <div style="margin-bottom:12px;">
               <label class="field-label">Custom Notes / Referral Contact / Special Focus</label>
-              <input type="text" id="job-notes" placeholder="e.g. Referred by Jane Doe; emphasize Kubernetes & Go latency wins" />
+              <input type="text" id="job-notes" placeholder="e.g. Referred by Jane Doe; emphasize Kubernetes &amp; Go latency wins" />
             </div>
             <div class="btn-row">
               <button class="btn btn-lime" onclick="addJob(false)">Add Custom Job</button>
@@ -375,10 +589,10 @@
         <div class="top-bar">
           <div>
             <h1 class="page-title">Mailbox, Replies &amp; Sent Mail</h1>
-            <p class="page-sub">IMAP reply monitoring with automatic interview detection + plain-text Lavender/Gong scored outbox.</p>
+            <p class="page-sub">2FA-safe Single-Provider OAuth2 (Google / Microsoft / Yahoo) + Proton Bridge + Custom Mail API.</p>
           </div>
           <div class="btn-row">
-            <button class="btn btn-lime" onclick="scanInboxNow()">Scan Inbox (IMAP)</button>
+            <button class="btn btn-lime" onclick="scanInboxNow()">Scan Inbox Now</button>
             <button class="btn btn-yellow" onclick="sendApprovedNow(true)">Dry-Run Approved</button>
             <button class="btn btn-black" onclick="sendApprovedNow(false)">Send Approved Mail</button>
           </div>
@@ -417,34 +631,10 @@
 
           <div class="card">
             <div class="card-header">
-              <h2 class="card-title">IMAP / SMTP Mailbox Connection</h2>
-              <span class="tag" id="mail-cfg-status">CHECKING...</span>
+              <h2 class="card-title">Active Mail Provider (One Provider Only)</h2>
+              <span class="tag" id="mail-cfg-status">NOT CONNECTED</span>
             </div>
-            <div class="form-grid">
-              <div>
-                <label class="field-label">Provider</label>
-                <select id="cfg-provider">
-                  <option value="gmail">Gmail (App Password)</option>
-                  <option value="outlook">Outlook / Microsoft 365</option>
-                  <option value="fastmail">Fastmail</option>
-                  <option value="icloud">iCloud Mail</option>
-                  <option value="custom">Custom IMAP/SMTP</option>
-                </select>
-              </div>
-              <div>
-                <label class="field-label">Email Address</label>
-                <input type="email" id="cfg-email" placeholder="you@gmail.com" />
-              </div>
-              <div>
-                <label class="field-label">App Password (Stored Local chmod 600)</label>
-                <input type="password" id="cfg-pass" placeholder="xxxx xxxx xxxx xxxx" />
-              </div>
-              <div>
-                <label class="field-label">Display Name</label>
-                <input type="text" id="cfg-display" placeholder="Jane Doe" />
-              </div>
-            </div>
-            <button class="btn btn-black" onclick="saveMailConfigUI()">Save Local Mailbox Credentials</button>
+            <div id="mailbox-provider-mount"></div>
           </div>
         </div>
 

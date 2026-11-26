@@ -1,5 +1,10 @@
-/* Employmaxing — Local Non-CLI Dashboard Controller (GPL-3.0) */
+/* Employmaxing v1.1 — Zero-CLI Onboarding + Single-Provider OAuth2 Mail Controller (GPL-3.0) */
 let STATE = {
+  onboarding: null,
+  mailCfg: null,
+  selectedProvider: 'google',
+  wizardFiles: { resume: null, linkedin: null },
+  initialRouted: false,
   dashboard: null,
   facts: [],
   factFilter: 'all',
@@ -15,7 +20,7 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => el.classList.remove('show'), 3600);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
 }
 
 function esc(str) {
@@ -26,15 +31,25 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = String(reader.result || '');
+      resolve(res.includes(',') ? res.split(',')[1] : res);
+    };
+    reader.onerror = () => reject(new Error('Could not read selected file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
@@ -51,9 +66,447 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
+// Listen for OAuth2 popup completion from /api/oauth/<provider>/callback
+window.addEventListener('message', (ev) => {
+  if (ev.data && ev.data.type === 'employmaxing_oauth_ok') {
+    toast(`Connected ${ev.data.provider.toUpperCase()} (${ev.data.email}) via 2FA-safe OAuth2!`);
+    refreshAll();
+  }
+});
+
+/* ==================== FIRST-TIME SETUP WIZARD ==================== */
+
+function goWizardStep(stepNum) {
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById(`wizard-step-${stepNum}`);
+  if (panel) panel.classList.add('active');
+  document.querySelectorAll('#wizard-stepper .step-pill').forEach(pill => {
+    const n = parseInt(pill.dataset.step, 10);
+    pill.classList.remove('active', 'done');
+    if (n === stepNum) pill.classList.add('active');
+    else if (n < stepNum) pill.classList.add('done');
+  });
+}
+
+function handleFilePick(input, kind) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  STATE.wizardFiles[kind] = file;
+  const lbl = document.getElementById(kind === 'resume' ? 'dz-resume-label' : 'dz-linkedin-label');
+  if (lbl) lbl.innerHTML = `<span class="tag tag-lime">SELECTED: ${esc(file.name)} (${Math.round(file.size / 1024)} KB)</span>`;
+}
+
+// Enable drag-and-drop on both wizard dropzones
+['dz-resume', 'dz-linkedin'].forEach((id) => {
+  const dz = document.getElementById(id);
+  if (!dz) return;
+  const kind = id === 'dz-resume' ? 'resume' : 'linkedin';
+  dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) {
+      STATE.wizardFiles[kind] = file;
+      const lbl = document.getElementById(kind === 'resume' ? 'dz-resume-label' : 'dz-linkedin-label');
+      lbl.innerHTML = `<span class="tag tag-lime">DROPPED: ${esc(file.name)} (${Math.round(file.size / 1024)} KB)</span>`;
+    }
+  });
+});
+
+function populateWizardStep2(defaults, facts) {
+  if (!defaults) return;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+  setVal('w2-name', defaults.full_name);
+  setVal('w2-email', defaults.email);
+  setVal('w2-phone', defaults.phone);
+  setVal('w2-city', defaults.city);
+  setVal('w2-country', defaults.country);
+  setVal('w2-linkedin', defaults.linkedin);
+  setVal('w2-github', defaults.github);
+  setVal('w2-website', defaults.website);
+  setVal('w2-roles', defaults.target_roles);
+  setVal('w2-loc-pref', defaults.location_pref);
+  setVal('w2-salary', defaults.min_salary);
+  setVal('w2-dealbreakers', defaults.dealbreakers);
+  setVal('w2-work-auth', defaults.work_auth);
+  setVal('w2-sponsorship', defaults.sponsorship);
+  setVal('w2-notice', defaults.notice_period);
+  setVal('w2-eeo', defaults.eeo_default);
+
+  const preview = document.getElementById('wiz-facts-preview');
+  if (preview && facts && facts.length) {
+    const top = facts.slice(0, 8);
+    preview.innerHTML = `
+      <div style="font-weight:900;text-transform:uppercase;font-size:0.82rem;margin-bottom:6px;">Auto-Extracted Facts (${facts.length} total — reviewable anytime in 02 // Info &amp; Consent):</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${top.map(f => `<span class="tag ${f.consent_status === 'approved' ? 'tag-lime' : 'tag-yellow'}">${esc(f.fact_key)}: ${esc(String(f.fact_value).slice(0, 36))}</span>`).join('')}
+        ${facts.length > 8 ? `<span class="tag tag-black">+${facts.length - 8} more</span>` : ''}
+      </div>
+    `;
+  }
+}
+
+async function wizardExtractStep1() {
+  toast('Extracting all info from your resume & links...');
+  try {
+    const payload = {
+      linkedin_url: document.getElementById('wiz-linkedin-url').value.trim(),
+      github: document.getElementById('wiz-github').value.trim(),
+      website: document.getElementById('wiz-website').value.trim(),
+      resume_text: document.getElementById('wiz-resume-text').value.trim(),
+    };
+    if (STATE.wizardFiles.resume) {
+      payload.resume_filename = STATE.wizardFiles.resume.name;
+      payload.resume_b64 = await fileToBase64(STATE.wizardFiles.resume);
+    }
+    if (STATE.wizardFiles.linkedin) {
+      payload.linkedin_filename = STATE.wizardFiles.linkedin.name;
+      payload.linkedin_b64 = await fileToBase64(STATE.wizardFiles.linkedin);
+    }
+    const res = await api('/api/onboarding/upload-and-extract', { method: 'POST', body: JSON.stringify(payload) });
+    populateWizardStep2(res.onboarding.defaults, res.facts);
+    document.getElementById('wiz-extract-banner').innerHTML = `
+      <div class="banner ok">
+        <span>AUTO-EXTRACTED ${(res.facts || []).length} FACT(S) FROM YOUR RESUME &amp; LINKS! Review the pre-filled fields below and click Save.</span>
+      </div>
+    `;
+    toast(`Pulled ${(res.facts || []).length} facts automatically!`);
+    goWizardStep(2);
+    refreshAll();
+  } catch (e) {
+    toast(`Extract error: ${e.message}`);
+  }
+}
+
+async function wizardSaveStep2() {
+  try {
+    const payload = {
+      full_name: document.getElementById('w2-name').value.trim(),
+      email: document.getElementById('w2-email').value.trim(),
+      phone: document.getElementById('w2-phone').value.trim(),
+      city: document.getElementById('w2-city').value.trim(),
+      country: document.getElementById('w2-country').value.trim(),
+      linkedin: document.getElementById('w2-linkedin').value.trim(),
+      github: document.getElementById('w2-github').value.trim(),
+      website: document.getElementById('w2-website').value.trim(),
+      target_roles: document.getElementById('w2-roles').value.trim(),
+      location_pref: document.getElementById('w2-loc-pref').value,
+      min_salary: document.getElementById('w2-salary').value.trim(),
+      dealbreakers: document.getElementById('w2-dealbreakers').value.trim(),
+      work_auth: document.getElementById('w2-work-auth').value,
+      sponsorship: document.getElementById('w2-sponsorship').value,
+      notice_period: document.getElementById('w2-notice').value.trim(),
+      eeo_default: document.getElementById('w2-eeo').value.trim(),
+      approve_all_extracted: document.getElementById('w2-approve-all').checked,
+    };
+    await api('/api/onboarding/complete', { method: 'POST', body: JSON.stringify(payload) });
+    toast('Profile, preferences & form defaults saved!');
+    goWizardStep(3);
+    refreshAll();
+  } catch (e) {
+    toast(`Save error: ${e.message}`);
+  }
+}
+
+/* ==================== SINGLE-PROVIDER MAIL CONNECTOR (OAUTH2 + CUSTOM API) ==================== */
+
+const MAIL_PROVIDERS = [
+  { id: 'google', name: 'Google', sub: 'Sign in w/ Google (OAuth2 + 2FA)' },
+  { id: 'microsoft', name: 'Microsoft', sub: 'Sign in w/ Microsoft (OAuth2 + 2FA)' },
+  { id: 'yahoo', name: 'Yahoo', sub: 'Yahoo OAuth2 or 2FA App Pass' },
+  { id: 'proton', name: 'Proton', sub: 'Proton Mail Bridge (2FA Native)' },
+  { id: 'custom_api', name: 'Custom API', sub: 'Resend / Postmark / REST API' },
+];
+
+function selectMailProvider(pid) {
+  STATE.selectedProvider = pid;
+  renderSingleProviderWidgets();
+}
+
+function renderSingleProviderHTML(prefix) {
+  const cfg = STATE.mailCfg || {};
+  const activeProv = cfg.configured ? cfg.provider : null;
+  const sel = STATE.selectedProvider || activeProv || 'google';
+  const redir = (cfg.redirect_uris || {});
+
+  let html = '';
+  if (activeProv) {
+    html += `
+      <div class="banner ok" style="margin-bottom:14px;">
+        <span>ACTIVE PROVIDER (1 OF 1): <strong>${esc(activeProv.toUpperCase())}</strong> ${cfg.email ? `(${esc(cfg.email)})` : ''} via <strong>${esc(cfg.auth_mode || 'oauth2')}</strong></span>
+        <button class="btn btn-sm btn-coral" onclick="disconnectProvider()">Disconnect / Switch</button>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="margin-bottom:10px;font-family:var(--font-mono);font-size:0.78rem;font-weight:700;">
+        Choose <strong>ONE</strong> mail provider below. Connecting a new provider replaces any prior connection.
+      </div>
+    `;
+  }
+
+  html += `<div class="provider-grid">
+    ${MAIL_PROVIDERS.map(p => `
+      <button type="button" class="provider-card ${sel === p.id ? 'selected' : ''}" onclick="selectMailProvider('${p.id}')">
+        <div class="p-name">${esc(p.name)}</div>
+        <div class="p-sub">${esc(p.sub)}</div>
+      </button>
+    `).join('')}
+  </div>`;
+
+  if (sel === 'google') {
+    const uri = redir.google || `${location.origin}/api/oauth/google/callback`;
+    html += `
+      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
+        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Sign in with Google (Gmail API + OAuth2 PKCE)</div>
+        <p class="mono" style="margin-bottom:12px;color:#444;">Works seamlessly with Google 2FA &amp; Passkeys. Reads inbox replies &amp; sends plain-text outreach via official Gmail API (no App Passwords needed).</p>
+        <div class="form-grid">
+          <div>
+            <label class="field-label">Google OAuth Client ID</label>
+            <input type="text" id="${prefix}-google-cid" value="${esc(cfg.provider === 'google' ? (cfg.client_id || '') : '')}" placeholder="12345-xxxx.apps.googleusercontent.com" />
+          </div>
+          <div>
+            <label class="field-label">Client Secret (Optional for Desktop PKCE)</label>
+            <input type="password" id="${prefix}-google-csec" placeholder="GOCSPX-... (optional)" />
+          </div>
+        </div>
+        <details class="brutal-details">
+          <summary>Need a free personal Google OAuth Client ID? (60-sec local setup)</summary>
+          <div class="mono" style="margin-top:8px;font-size:0.76rem;line-height:1.5;">
+            1. Open Google Cloud Console &rarr; APIs &amp; Services &rarr; Enable <strong>Gmail API</strong>.<br/>
+            2. Create <strong>OAuth Client ID</strong> (Web Application) and add Authorized Redirect URI:<br/>
+            <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
+            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:6px;" onclick="copyText('${esc(uri)}')">Copy URI</button>
+          </div>
+        </details>
+        <button type="button" class="oauth-btn google" onclick="startOAuth('google', '${prefix}')">
+          <span>G</span> <span>Sign in with Google (OAuth2)</span>
+        </button>
+      </div>
+    `;
+  } else if (sel === 'microsoft') {
+    const uri = redir.microsoft || `${location.origin}/api/oauth/microsoft/callback`;
+    html += `
+      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
+        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Sign in with Microsoft (Outlook / M365 Graph API + PKCE)</div>
+        <p class="mono" style="margin-bottom:12px;color:#444;">Works seamlessly with Microsoft Authenticator &amp; 2FA. Public PKCE client — <strong>no client secret required</strong>.</p>
+        <div class="form-grid">
+          <div>
+            <label class="field-label">Microsoft App (Client) ID</label>
+            <input type="text" id="${prefix}-microsoft-cid" value="${esc(cfg.provider === 'microsoft' ? (cfg.client_id || '') : '')}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+          </div>
+          <div>
+            <label class="field-label">Your Display Name (Optional)</label>
+            <input type="text" id="${prefix}-microsoft-name" value="${esc(cfg.display_name || '')}" placeholder="Alex Mercer" />
+          </div>
+        </div>
+        <details class="brutal-details">
+          <summary>Need a free personal Microsoft Entra / Azure App ID? (60-sec setup)</summary>
+          <div class="mono" style="margin-top:8px;font-size:0.76rem;line-height:1.5;">
+            1. Open Azure Portal &rarr; App Registrations &rarr; New Registration (Personal + Work accounts).<br/>
+            2. Add Platform: <strong>Mobile &amp; desktop / Public client</strong> Redirect URI:<br/>
+            <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
+            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:6px;" onclick="copyText('${esc(uri)}')">Copy URI</button><br/>
+            3. Add Delegated Permissions: <code>Mail.Read</code>, <code>Mail.Send</code>, <code>User.Read</code>.
+          </div>
+        </details>
+        <button type="button" class="oauth-btn microsoft" onclick="startOAuth('microsoft', '${prefix}')">
+          <span>M</span> <span>Sign in with Microsoft (OAuth2)</span>
+        </button>
+      </div>
+    `;
+  } else if (sel === 'yahoo') {
+    const uri = redir.yahoo || `${location.origin}/api/oauth/yahoo/callback`;
+    html += `
+      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
+        <div style="font-weight:900;text-transform:uppercase;margin-bottom:8px;">Yahoo Mail (OAuth2 OR 2FA App Password)</div>
+        <div class="form-grid">
+          <div>
+            <label class="field-label">Yahoo Email</label>
+            <input type="email" id="${prefix}-yahoo-email" value="${esc(cfg.provider === 'yahoo' ? (cfg.email || '') : '')}" placeholder="you@yahoo.com" />
+          </div>
+          <div>
+            <label class="field-label">Yahoo 2FA App Password</label>
+            <input type="password" id="${prefix}-yahoo-pass" placeholder="Generated in Yahoo Account Security" />
+          </div>
+        </div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button type="button" class="btn btn-lime" onclick="saveDirectProvider('yahoo', '${prefix}')">Connect Yahoo (2FA App Password)</button>
+        </div>
+        <details class="brutal-details">
+          <summary>Or use Yahoo OAuth2 Client ID (Redirect: ${esc(uri)})</summary>
+          <div class="form-grid" style="margin-top:8px;">
+            <div>
+              <label class="field-label">Yahoo Client ID</label>
+              <input type="text" id="${prefix}-yahoo-cid" placeholder="dj0yJmk9..." />
+            </div>
+            <div>
+              <label class="field-label">Yahoo Client Secret</label>
+              <input type="password" id="${prefix}-yahoo-csec" placeholder="Optional for PKCE" />
+            </div>
+          </div>
+          <button type="button" class="oauth-btn yahoo" onclick="startOAuth('yahoo', '${prefix}')">Sign in with Yahoo (OAuth2)</button>
+        </details>
+      </div>
+    `;
+  } else if (sel === 'proton') {
+    html += `
+      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
+        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Proton Mail (via Local Proton Mail Bridge — 2FA Native)</div>
+        <p class="mono" style="margin-bottom:12px;color:#444;">Proton's end-to-end encryption connects locally through Proton Mail Bridge (<code>127.0.0.1:1143</code> / <code>1025</code>) using the Bridge password shown in your Proton Bridge app.</p>
+        <div class="form-grid">
+          <div>
+            <label class="field-label">Proton Email</label>
+            <input type="email" id="${prefix}-proton-email" value="${esc(cfg.provider === 'proton' ? (cfg.email || '') : '')}" placeholder="you@proton.me" />
+          </div>
+          <div>
+            <label class="field-label">Proton Bridge Password</label>
+            <input type="password" id="${prefix}-proton-pass" placeholder="Paste Bridge password" />
+          </div>
+        </div>
+        <button type="button" class="btn btn-black" onclick="saveDirectProvider('proton', '${prefix}')">Connect Proton Bridge</button>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
+        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Custom Mail Provider API (Resend / Postmark / Custom REST)</div>
+        <div class="form-grid">
+          <div>
+            <label class="field-label">API Preset</label>
+            <select id="${prefix}-api-preset" onchange="applyCustomApiPreset('${prefix}', this.value)">
+              <option value="custom">Custom HTTP REST API</option>
+              <option value="resend">Resend (api.resend.com)</option>
+              <option value="postmark">Postmark (api.postmarkapp.com)</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Sender From Email</label>
+            <input type="email" id="${prefix}-api-from" value="${esc(cfg.provider === 'custom_api' ? (cfg.from_email || cfg.email || '') : '')}" placeholder="you@yourdomain.com" />
+          </div>
+          <div>
+            <label class="field-label">Send Endpoint URL (POST JSON)</label>
+            <input type="url" id="${prefix}-api-send-url" value="${esc(cfg.provider === 'custom_api' ? (cfg.send_url || '') : '')}" placeholder="https://api.resend.com/emails" />
+          </div>
+          <div>
+            <label class="field-label">Inbox Endpoint URL (Optional GET)</label>
+            <input type="url" id="${prefix}-api-inbox-url" value="${esc(cfg.provider === 'custom_api' ? (cfg.inbox_url || '') : '')}" placeholder="https://api.yourmail.com/v1/inbox" />
+          </div>
+          <div>
+            <label class="field-label">API Key / Bearer Token</label>
+            <input type="password" id="${prefix}-api-key" placeholder="re_xxxxxxxx..." />
+          </div>
+          <div>
+            <label class="field-label">Auth Header</label>
+            <input type="text" id="${prefix}-api-header" value="${esc(cfg.auth_header || 'Authorization')}" />
+          </div>
+        </div>
+        <button type="button" class="btn btn-black" onclick="saveDirectProvider('custom_api', '${prefix}')">Connect Custom Mail API</button>
+      </div>
+    `;
+  }
+  return html;
+}
+
+function applyCustomApiPreset(prefix, preset) {
+  const sendEl = document.getElementById(`${prefix}-api-send-url`);
+  const hdrEl = document.getElementById(`${prefix}-api-header`);
+  if (preset === 'resend') {
+    sendEl.value = 'https://api.resend.com/emails';
+    hdrEl.value = 'Authorization';
+  } else if (preset === 'postmark') {
+    sendEl.value = 'https://api.postmarkapp.com/email';
+    hdrEl.value = 'X-Postmark-Server-Token';
+  }
+}
+
+function renderSingleProviderWidgets() {
+  const wizMount = document.getElementById('wiz-mail-mount');
+  const mbMount = document.getElementById('mailbox-provider-mount');
+  if (wizMount) wizMount.innerHTML = renderSingleProviderHTML('wiz');
+  if (mbMount) mbMount.innerHTML = renderSingleProviderHTML('mb');
+}
+
+async function startOAuth(provider, prefix) {
+  try {
+    const cidEl = document.getElementById(`${prefix}-${provider}-cid`);
+    const csecEl = document.getElementById(`${prefix}-${provider}-csec`);
+    const nameEl = document.getElementById(`${prefix}-${provider}-name`);
+    const res = await api(`/api/oauth/${provider}/start`, {
+      method: 'POST',
+      body: JSON.stringify({
+        client_id: cidEl ? cidEl.value.trim() : '',
+        client_secret: csecEl ? csecEl.value.trim() : '',
+        display_name: nameEl ? nameEl.value.trim() : '',
+      }),
+    });
+    const popup = window.open(res.auth_url, `employmaxing_oauth_${provider}`, 'width=560,height=700');
+    if (!popup) {
+      window.location.href = res.auth_url;
+    } else {
+      toast(`Complete ${provider.toUpperCase()} Sign-In in the popup window...`);
+    }
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function saveDirectProvider(provider, prefix) {
+  try {
+    let payload = { provider };
+    if (provider === 'yahoo') {
+      payload = {
+        provider: 'yahoo',
+        auth_mode: 'app_password',
+        email: document.getElementById(`${prefix}-yahoo-email`).value.trim(),
+        password: document.getElementById(`${prefix}-yahoo-pass`).value,
+      };
+    } else if (provider === 'proton') {
+      payload = {
+        provider: 'proton',
+        auth_mode: 'proton_bridge',
+        email: document.getElementById(`${prefix}-proton-email`).value.trim(),
+        password: document.getElementById(`${prefix}-proton-pass`).value,
+      };
+    } else if (provider === 'custom_api') {
+      const preset = document.getElementById(`${prefix}-api-preset`).value;
+      payload = {
+        provider: 'custom_api',
+        auth_mode: 'api_key',
+        api_preset: preset,
+        from_email: document.getElementById(`${prefix}-api-from`).value.trim(),
+        email: document.getElementById(`${prefix}-api-from`).value.trim(),
+        send_url: document.getElementById(`${prefix}-api-send-url`).value.trim(),
+        inbox_url: document.getElementById(`${prefix}-api-inbox-url`).value.trim(),
+        api_key: document.getElementById(`${prefix}-api-key`).value.trim(),
+        auth_header: document.getElementById(`${prefix}-api-header`).value.trim() || 'Authorization',
+        auth_prefix: preset === 'postmark' ? '' : 'Bearer ',
+      };
+    }
+    await api('/api/mail-config', { method: 'POST', body: JSON.stringify(payload) });
+    toast(`Connected ${provider.toUpperCase()} as your active mail provider!`);
+    refreshAll();
+  } catch (e) {
+    toast(`Mail setup error: ${e.message}`);
+  }
+}
+
+async function disconnectProvider() {
+  try {
+    await api('/api/mail-config/disconnect', { method: 'POST', body: '{}' });
+    toast('Disconnected mail provider. You can now pick another provider.');
+    refreshAll();
+  } catch (e) { toast(e.message); }
+}
+
+/* ==================== CORE DASHBOARD STATE ==================== */
+
 async function refreshAll() {
   try {
-    const [dash, factsRes, jobsRes, emailsRes, formsRes, mailCfg, profRes] = await Promise.all([
+    const [onb, dash, factsRes, jobsRes, emailsRes, formsRes, mailCfg, profRes] = await Promise.all([
+      api('/api/onboarding/status'),
       api('/api/dashboard'),
       api('/api/facts'),
       api('/api/jobs'),
@@ -62,17 +515,40 @@ async function refreshAll() {
       api('/api/mail-config'),
       api('/api/profile'),
     ]);
+    STATE.onboarding = onb;
+    STATE.mailCfg = mailCfg;
+    if (mailCfg.configured && mailCfg.provider) STATE.selectedProvider = mailCfg.provider;
     STATE.dashboard = dash;
     STATE.facts = factsRes.facts || [];
     STATE.jobs = jobsRes.jobs || [];
     STATE.emails = emailsRes.emails || [];
     STATE.forms = formsRes.forms || [];
 
+    const obBadge = document.getElementById('badge-onboarding');
+    if (obBadge) {
+      obBadge.textContent = onb.completed ? 'DONE' : 'SETUP';
+      obBadge.className = `nav-badge ${onb.completed ? '' : 'alert'}`;
+    }
+    populateWizardStep2(onb.defaults, STATE.facts);
+
+    // Auto-route brand-new users directly to 00 // Get Started on first visit!
+    if (!STATE.initialRouted) {
+      STATE.initialRouted = true;
+      const params = new URLSearchParams(location.search);
+      if (params.get('oauth') === 'ok') {
+        switchView('mailbox');
+        toast(`Connected ${(params.get('provider') || '').toUpperCase()} via OAuth2!`);
+      } else if (!onb.completed && (STATE.facts.length === 0 && STATE.jobs.length === 0)) {
+        switchView('onboarding');
+      }
+    }
+
     renderDashboard(dash);
     renderFacts();
     renderMasterProfile(profRes);
     renderJobs();
     renderMailConfig(mailCfg);
+    renderSingleProviderWidgets();
     renderEmails();
     renderForms();
   } catch (err) {
@@ -117,10 +593,18 @@ function renderDashboard(dash) {
   document.getElementById('badge-forms').textContent = c.forms_pending ?? 0;
 
   const alerts = [];
+  if (STATE.onboarding && !STATE.onboarding.completed) {
+    alerts.push(`
+      <div class="banner warn">
+        <span>FIRST-TIME SETUP: Drop your resume, verify auto-pulled details, and connect your OAuth2 mail account in 2 minutes (zero CLI).</span>
+        <button class="btn btn-sm btn-black" onclick="switchView('onboarding')">Start Guided Setup</button>
+      </div>
+    `);
+  }
   if (c.facts_pending_consent > 0) {
     alerts.push(`
       <div class="banner warn">
-        <span>TRANSPARENCY NOTICE: ${c.facts_pending_consent} discovered fact(s) are waiting for your consent before they will be used in any resume, email, or form fill.</span>
+        <span>TRANSPARENCY NOTICE: ${c.facts_pending_consent} discovered fact(s) are waiting for your consent before use.</span>
         <button class="btn btn-sm btn-black" onclick="switchView('consent')">Review Now</button>
       </div>
     `);
@@ -133,20 +617,12 @@ function renderDashboard(dash) {
       </div>
     `);
   }
-  if (c.emails_pending_approval > 0) {
-    alerts.push(`
-      <div class="banner warn">
-        <span>OUTBOX QUEUE: ${c.emails_pending_approval} outbound email(s) awaiting your approval before sending.</span>
-        <button class="btn btn-sm btn-black" onclick="switchView('mailbox')">Inspect Outbox</button>
-      </div>
-    `);
-  }
   document.getElementById('dashboard-alerts').innerHTML = alerts.join('');
 
   const events = dash.recent_events || [];
   const tbody = document.getElementById('events-tbody');
   if (!events.length) {
-    tbody.innerHTML = '<tr><td colspan="3"><div class="empty-state">No events logged yet. Start in 02 // Info &amp; Consent to ingest your resume or GitHub profile.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3"><div class="empty-state">No events yet. Start in 00 // Get Started to upload your resume and connect your mail provider.</div></td></tr>';
     return;
   }
   tbody.innerHTML = events.map(e => `
@@ -169,7 +645,7 @@ function renderFacts() {
   const rows = STATE.facts.filter(f => STATE.factFilter === 'all' || f.consent_status === STATE.factFilter);
   const tbody = document.getElementById('facts-tbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No profile facts in this filter yet. Run Transparent Discovery above.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No profile facts in this filter yet. Upload your resume in 00 // Get Started or run discovery above.</div></td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(f => {
@@ -181,13 +657,11 @@ function renderFacts() {
           <span class="tag tag-black">${esc(f.category)}</span>
           <div class="mono" style="margin-top:4px;font-weight:700;">${esc(f.fact_key)}</div>
         </td>
-        <td>
-          <input type="text" id="fact-val-${f.id}" value="${esc(f.fact_value)}" />
-        </td>
+        <td><input type="text" id="fact-val-${f.id}" value="${esc(f.fact_value)}" /></td>
         <td class="mono">
           <div><strong>SRC:</strong> ${esc(f.source)}</div>
           <div><strong>USE:</strong> ${esc(f.planned_usage)}</div>
-          ${f.source_url ? `<a href="${esc(f.source_url)}" target="_blank">source link ↗</a>` : ''}
+          ${f.source_url ? `<a href="${esc(f.source_url)}" target="_blank">source link &nearr;</a>` : ''}
         </td>
         <td><span class="tag ${tagCls}">${esc(f.consent_status)}</span></td>
         <td>
@@ -222,17 +696,24 @@ async function approveAllFacts() {
 }
 
 async function runEnrichment() {
-  const payload = {
-    resume_path: document.getElementById('enrich-resume-path').value.trim(),
-    resume_text: document.getElementById('enrich-resume-text').value.trim(),
-    linkedin_path: document.getElementById('enrich-linkedin-path').value.trim(),
-    github: document.getElementById('enrich-github').value.trim(),
-    website: document.getElementById('enrich-website').value.trim(),
-  };
-  toast('Discovering facts from sources...');
+  toast('Uploading & discovering facts...');
   try {
+    const payload = {
+      github: document.getElementById('enrich-github').value.trim(),
+      website: document.getElementById('enrich-website').value.trim(),
+    };
+    const rInput = document.getElementById('enrich-resume-file');
+    if (rInput && rInput.files && rInput.files[0]) {
+      payload.resume_filename = rInput.files[0].name;
+      payload.resume_b64 = await fileToBase64(rInput.files[0]);
+    }
+    const lInput = document.getElementById('enrich-linkedin-file');
+    if (lInput && lInput.files && lInput.files[0]) {
+      payload.linkedin_filename = lInput.files[0].name;
+      payload.linkedin_b64 = await fileToBase64(lInput.files[0]);
+    }
     const res = await api('/api/enrich', { method: 'POST', body: JSON.stringify(payload) });
-    toast(`Discovery complete! ${res.pending_review_count} fact(s) queued for your consent.`);
+    toast(`Discovery complete! ${res.pending_review_count} fact(s) queued for consent.`);
     refreshAll();
   } catch (e) { toast(`Enrich failed: ${e.message}`); }
 }
@@ -262,7 +743,7 @@ function renderMasterProfile(prof) {
   const keys = Object.keys(byCat);
   const body = document.getElementById('master-profile-body');
   if (!keys.length) {
-    body.innerHTML = '<div class="empty-state">No approved profile facts yet. Approve facts in 02 // Info &amp; Consent to assemble your Master Profile.</div>';
+    body.innerHTML = '<div class="empty-state">No approved profile facts yet. Complete 00 // Get Started to assemble your Master Profile.</div>';
   } else {
     body.innerHTML = keys.map(cat => `
       <div style="margin-bottom:14px;">
@@ -279,13 +760,13 @@ function renderMasterProfile(prof) {
 async function runLinkedInAudit() {
   toast('Running 12-point LinkedIn vs. Resume Discrepancy Audit...');
   try {
-    const res = await api('/api/linkedin-audit', {
-      method: 'POST',
-      body: JSON.stringify({
-        linkedin_path: document.getElementById('li-audit-path').value.trim(),
-        linkedin_text: document.getElementById('li-audit-text').value.trim(),
-      }),
-    });
+    const payload = { linkedin_text: document.getElementById('li-audit-text').value.trim() };
+    const fInput = document.getElementById('li-audit-file');
+    if (fInput && fInput.files && fInput.files[0]) {
+      payload.linkedin_filename = fInput.files[0].name;
+      payload.linkedin_b64 = await fileToBase64(fInput.files[0]);
+    }
+    const res = await api('/api/linkedin-audit', { method: 'POST', body: JSON.stringify(payload) });
     const a = res.audit;
     const fx = a.turnkey_fixes;
     let html = `
@@ -340,11 +821,8 @@ async function addJob(buildFormAfter = false) {
     ['job-company', 'job-role', 'job-url', 'job-location', 'job-posting', 'job-notes'].forEach(id => {
       document.getElementById(id).value = '';
     });
-    if (buildFormAfter) {
-      await planFormForJob(res.id);
-    } else {
-      refreshAll();
-    }
+    if (buildFormAfter) await planFormForJob(res.id);
+    else refreshAll();
   } catch (e) { toast(e.message); }
 }
 
@@ -359,7 +837,7 @@ async function loadDorks() {
           <div style="font-weight:800;font-size:0.85rem;">${esc(q.board)}</div>
           <div class="mono" style="font-size:0.74rem;color:#444;">${esc(q.query)}</div>
         </div>
-        <a class="btn btn-sm btn-lime" href="${esc(q.fresh_google_url)}" target="_blank">Open &lt;48h ↗</a>
+        <a class="btn btn-sm btn-lime" href="${esc(q.fresh_google_url)}" target="_blank">Open &lt;48h &nearr;</a>
       </div>
     `).join('');
   } catch (e) { toast(e.message); }
@@ -407,19 +885,14 @@ function renderJobs() {
       <tr>
         <td>
           <strong>${esc(j.company)}</strong> — ${esc(j.role)}
-          <div class="mono" style="margin-top:4px;font-size:0.74rem;">ID: ${esc(j.id)} ${j.url ? `| <a href="${esc(j.url)}" target="_blank">Posting ↗</a>` : ''}</div>
+          <div class="mono" style="margin-top:4px;font-size:0.74rem;">ID: ${esc(j.id)} ${j.url ? `| <a href="${esc(j.url)}" target="_blank">Posting &nearr;</a>` : ''}</div>
         </td>
         <td>
           <div><span class="tag tag-black">${esc(j.priority_tier)}</span></div>
           <div style="margin-top:4px;"><span class="tag ${ghostCls}">GHOST: ${esc(j.ghost_risk)}</span></div>
         </td>
-        <td>
-          <select onchange="updateJobStage('${esc(j.id)}', this.value)">${stageOpts}</select>
-        </td>
-        <td class="mono">
-          <div>${esc(j.ats_type || 'auto')}</div>
-          <div>${esc(j.salary_band || '-')}</div>
-        </td>
+        <td><select onchange="updateJobStage('${esc(j.id)}', this.value)">${stageOpts}</select></td>
+        <td class="mono"><div>${esc(j.ats_type || 'auto')}</div><div>${esc(j.salary_band || '-')}</div></td>
         <td>
           <div class="btn-row">
             <button class="btn btn-sm btn-yellow" onclick="inspectJob('${esc(j.id)}')">Inspect App</button>
@@ -456,7 +929,7 @@ async function inspectJob(id) {
     }
     const entries = Object.entries(res.artifacts || {});
     if (!entries.length) {
-      html += '<div class="empty-state">No tailored artifacts saved in this job folder yet. Run `/employmaxing:autopilot` to generate resume, cover letter, and outreach.</div>';
+      html += '<div class="empty-state">No tailored artifacts saved in this job folder yet.</div>';
     } else {
       html += entries.map(([fname, text]) => `
         <div style="margin-bottom:14px;">
@@ -481,28 +954,9 @@ async function planFormForJob(job_id) {
 
 function renderMailConfig(cfg) {
   const badge = document.getElementById('mail-cfg-status');
-  badge.textContent = cfg.configured ? `CONNECTED (${cfg.email})` : 'NOT CONFIGURED';
+  if (!badge) return;
+  badge.textContent = cfg.configured ? `${(cfg.provider || '').toUpperCase()} CONNECTED` : 'NOT CONNECTED';
   badge.className = `tag ${cfg.configured ? 'tag-lime' : 'tag-coral'}`;
-  if (cfg.email) document.getElementById('cfg-email').value = cfg.email;
-  if (cfg.provider) document.getElementById('cfg-provider').value = cfg.provider;
-  if (cfg.display_name) document.getElementById('cfg-display').value = cfg.display_name;
-}
-
-async function saveMailConfigUI() {
-  try {
-    await api('/api/mail-config', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: document.getElementById('cfg-provider').value,
-        email: document.getElementById('cfg-email').value.trim(),
-        password: document.getElementById('cfg-pass').value,
-        display_name: document.getElementById('cfg-display').value.trim(),
-      }),
-    });
-    document.getElementById('cfg-pass').value = '';
-    toast('Mailbox credentials saved locally (chmod 600).');
-    refreshAll();
-  } catch (e) { toast(e.message); }
 }
 
 async function queueEmail() {
@@ -539,7 +993,7 @@ async function sendApprovedNow(dry_run) {
 }
 
 async function scanInboxNow() {
-  toast('Scanning IMAP inbox for job replies...');
+  toast('Scanning connected mailbox for recruiter & interview replies...');
   try {
     const res = await api('/api/emails/scan-inbox', { method: 'POST', body: JSON.stringify({ days: 14 }) });
     toast(res.message || `Inbox scanned: ${(res.new_replies || []).length} job message(s) found.`);
@@ -549,8 +1003,8 @@ async function scanInboxNow() {
 
 function filterEmails(flt, btn) {
   STATE.emailFilter = flt;
-  btn.parentElement.querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#email-filter-tabs .subtab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
   renderEmails();
 }
 
