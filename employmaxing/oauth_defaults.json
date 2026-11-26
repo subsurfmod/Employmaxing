@@ -1,0 +1,14 @@
+{
+  "_comment": "Optional repo-level public OAuth2 PKCE Client IDs for true 1-click Sign-In popups. Microsoft requires ONLY client_id (zero secret). Google Desktop OAuth supports http://127.0.0.1 loopback redirects.",
+  "google": {
+    "client_id": "",
+    "client_secret": ""
+  },
+  "microsoft": {
+    "client_id": ""
+  },
+  "yahoo": {
+    "client_id": "",
+    "client_secret": ""
+  }
+}

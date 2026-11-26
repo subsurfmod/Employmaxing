@@ -256,98 +256,115 @@ function renderSingleProviderHTML(prefix) {
     `).join('')}
   </div>`;
 
+  const readyMap = cfg.oauth_ready || {};
+
   if (sel === 'google') {
     const uri = redir.google || `${location.origin}/api/oauth/google/callback`;
+    const isReady = !!readyMap.google;
     html += `
-      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
-        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Sign in with Google (Gmail API + OAuth2 PKCE)</div>
-        <p class="mono" style="margin-bottom:12px;color:#444;">Works seamlessly with Google 2FA &amp; Passkeys. Reads inbox replies &amp; sends plain-text outreach via official Gmail API (no App Passwords needed).</p>
-        <div class="form-grid">
-          <div>
-            <label class="field-label">Google OAuth Client ID</label>
-            <input type="text" id="${prefix}-google-cid" value="${esc(cfg.provider === 'google' ? (cfg.client_id || '') : '')}" placeholder="12345-xxxx.apps.googleusercontent.com" />
-          </div>
-          <div>
-            <label class="field-label">Client Secret (Optional for Desktop PKCE)</label>
-            <input type="password" id="${prefix}-google-csec" placeholder="GOCSPX-... (optional)" />
-          </div>
+      <div style="border:2px solid #111;padding:18px;background:#FFFDF8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Sign in with Google</div>
+          <span class="tag ${isReady ? 'tag-lime' : 'tag-yellow'}">${isReady ? '1-CLICK READY' : '1-TIME APP ID NEEDED'}</span>
         </div>
-        <details class="brutal-details">
-          <summary>Need a free personal Google OAuth Client ID? (60-sec local setup)</summary>
-          <div class="mono" style="margin-top:8px;font-size:0.76rem;line-height:1.5;">
-            1. Open Google Cloud Console &rarr; APIs &amp; Services &rarr; Enable <strong>Gmail API</strong>.<br/>
-            2. Create <strong>OAuth Client ID</strong> (Web Application) and add Authorized Redirect URI:<br/>
-            <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
-            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:6px;" onclick="copyText('${esc(uri)}')">Copy URI</button>
-          </div>
-        </details>
+        <p class="mono" style="margin-bottom:16px;color:#444;">Opens a secure Google popup to pick your account and approve Gmail access. Works natively with Google 2FA &amp; Passkeys.</p>
         <button type="button" class="oauth-btn google" onclick="startOAuth('google', '${prefix}')">
-          <span>G</span> <span>Sign in with Google (OAuth2)</span>
+          <span style="display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;background:#111;color:#C8FF2E;font-weight:900;">G</span>
+          <span>Continue with Google</span>
         </button>
+        <details class="brutal-details" id="${prefix}-google-setup" ${isReady ? '' : ''}>
+          <summary>Advanced: Configure Local Google OAuth App ID (One-Time Setup)</summary>
+          <div class="mono" style="margin-top:10px;font-size:0.76rem;line-height:1.55;">
+            Because Employmaxing runs 100% locally on your computer with no cloud middleman, Google requires an OAuth Client ID once (or set it in <code>employmaxing/oauth_defaults.json</code> for all users):<br/>
+            1. <a href="https://console.cloud.google.com/apis/credentials" target="_blank"><strong>Open Google Cloud Credentials &nearr;</strong></a> &rarr; Enable <strong>Gmail API</strong> &rarr; Create <strong>OAuth Client ID (Web App)</strong>.<br/>
+            2. Add Redirect URI: <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
+            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:4px;" onclick="copyText('${esc(uri)}')">Copy</button>
+          </div>
+          <div class="form-grid" style="margin-top:10px;">
+            <div>
+              <label class="field-label">Google OAuth Client ID</label>
+              <input type="text" id="${prefix}-google-cid" value="${esc(cfg.provider === 'google' ? (cfg.client_id || '') : '')}" placeholder="12345-xxxx.apps.googleusercontent.com" />
+            </div>
+            <div>
+              <label class="field-label">Client Secret (Optional for PKCE)</label>
+              <input type="password" id="${prefix}-google-csec" placeholder="GOCSPX-... (optional)" />
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-lime" onclick="startOAuth('google', '${prefix}')">Save &amp; Open Google Sign-In Popup &rarr;</button>
+        </details>
       </div>
     `;
   } else if (sel === 'microsoft') {
     const uri = redir.microsoft || `${location.origin}/api/oauth/microsoft/callback`;
+    const isReady = !!readyMap.microsoft;
     html += `
-      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
-        <div style="font-weight:900;text-transform:uppercase;margin-bottom:6px;">Sign in with Microsoft (Outlook / M365 Graph API + PKCE)</div>
-        <p class="mono" style="margin-bottom:12px;color:#444;">Works seamlessly with Microsoft Authenticator &amp; 2FA. Public PKCE client — <strong>no client secret required</strong>.</p>
-        <div class="form-grid">
-          <div>
-            <label class="field-label">Microsoft App (Client) ID</label>
-            <input type="text" id="${prefix}-microsoft-cid" value="${esc(cfg.provider === 'microsoft' ? (cfg.client_id || '') : '')}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-          </div>
-          <div>
-            <label class="field-label">Your Display Name (Optional)</label>
-            <input type="text" id="${prefix}-microsoft-name" value="${esc(cfg.display_name || '')}" placeholder="Alex Mercer" />
-          </div>
+      <div style="border:2px solid #111;padding:18px;background:#FFFDF8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Sign in with Microsoft</div>
+          <span class="tag ${isReady ? 'tag-lime' : 'tag-yellow'}">${isReady ? '1-CLICK READY' : '1-TIME APP ID NEEDED'}</span>
         </div>
-        <details class="brutal-details">
-          <summary>Need a free personal Microsoft Entra / Azure App ID? (60-sec setup)</summary>
-          <div class="mono" style="margin-top:8px;font-size:0.76rem;line-height:1.5;">
-            1. Open Azure Portal &rarr; App Registrations &rarr; New Registration (Personal + Work accounts).<br/>
-            2. Add Platform: <strong>Mobile &amp; desktop / Public client</strong> Redirect URI:<br/>
-            <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
-            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:6px;" onclick="copyText('${esc(uri)}')">Copy URI</button><br/>
-            3. Add Delegated Permissions: <code>Mail.Read</code>, <code>Mail.Send</code>, <code>User.Read</code>.
-          </div>
-        </details>
+        <p class="mono" style="margin-bottom:16px;color:#444;">Opens a secure Microsoft popup to pick your Outlook / Office 365 account. Works natively with Microsoft Authenticator &amp; 2FA (no client secret needed).</p>
         <button type="button" class="oauth-btn microsoft" onclick="startOAuth('microsoft', '${prefix}')">
-          <span>M</span> <span>Sign in with Microsoft (OAuth2)</span>
+          <span style="display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;background:#111;color:#FFFFFF;font-weight:900;">M</span>
+          <span>Continue with Microsoft</span>
         </button>
+        <details class="brutal-details" id="${prefix}-microsoft-setup">
+          <summary>Advanced: Configure Local Microsoft App ID (One-Time, No Secret)</summary>
+          <div class="mono" style="margin-top:10px;font-size:0.76rem;line-height:1.55;">
+            1. <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank"><strong>Open Azure App Registrations &nearr;</strong></a> &rarr; New Registration (Personal + Work accounts).<br/>
+            2. Add Public Client Redirect URI: <code style="background:#FFE135;padding:2px 6px;">${esc(uri)}</code>
+            <button type="button" class="btn btn-sm btn-yellow" style="margin-left:4px;" onclick="copyText('${esc(uri)}')">Copy</button><br/>
+            3. Add Delegated Permissions: <code>Mail.Read</code>, <code>Mail.Send</code>, <code>User.Read</code> (or bundle Client ID once in <code>employmaxing/oauth_defaults.json</code>).
+          </div>
+          <div class="form-grid" style="margin-top:10px;">
+            <div>
+              <label class="field-label">Microsoft Application (Client) ID</label>
+              <input type="text" id="${prefix}-microsoft-cid" value="${esc(cfg.provider === 'microsoft' ? (cfg.client_id || '') : '')}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-lime" onclick="startOAuth('microsoft', '${prefix}')">Save &amp; Open Microsoft Sign-In Popup &rarr;</button>
+        </details>
       </div>
     `;
   } else if (sel === 'yahoo') {
     const uri = redir.yahoo || `${location.origin}/api/oauth/yahoo/callback`;
+    const isReady = !!readyMap.yahoo;
     html += `
-      <div style="border:2px solid #111;padding:16px;background:#FFFDF8;">
-        <div style="font-weight:900;text-transform:uppercase;margin-bottom:8px;">Yahoo Mail (OAuth2 OR 2FA App Password)</div>
-        <div class="form-grid">
-          <div>
-            <label class="field-label">Yahoo Email</label>
-            <input type="email" id="${prefix}-yahoo-email" value="${esc(cfg.provider === 'yahoo' ? (cfg.email || '') : '')}" placeholder="you@yahoo.com" />
-          </div>
-          <div>
-            <label class="field-label">Yahoo 2FA App Password</label>
-            <input type="password" id="${prefix}-yahoo-pass" placeholder="Generated in Yahoo Account Security" />
-          </div>
+      <div style="border:2px solid #111;padding:18px;background:#FFFDF8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Sign in with Yahoo Mail</div>
+          <span class="tag ${isReady ? 'tag-lime' : 'tag-yellow'}">${isReady ? '1-CLICK READY' : 'OAUTH2 / 2FA'}</span>
         </div>
-        <div class="btn-row" style="margin-bottom:10px;">
-          <button type="button" class="btn btn-lime" onclick="saveDirectProvider('yahoo', '${prefix}')">Connect Yahoo (2FA App Password)</button>
-        </div>
-        <details class="brutal-details">
-          <summary>Or use Yahoo OAuth2 Client ID (Redirect: ${esc(uri)})</summary>
-          <div class="form-grid" style="margin-top:8px;">
+        <p class="mono" style="margin-bottom:14px;color:#444;">Sign in via Yahoo OAuth2 popup or connect using a Yahoo 2FA App Password.</p>
+        <button type="button" class="oauth-btn yahoo" onclick="startOAuth('yahoo', '${prefix}')">
+          <span style="display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;background:#111;color:#FFE135;font-weight:900;">Y!</span>
+          <span>Continue with Yahoo</span>
+        </button>
+        <details class="brutal-details" id="${prefix}-yahoo-setup">
+          <summary>Advanced: Yahoo OAuth Client ID or 2FA App Password</summary>
+          <div class="form-grid" style="margin-top:10px;">
             <div>
-              <label class="field-label">Yahoo Client ID</label>
+              <label class="field-label">Yahoo OAuth Client ID (Redirect: ${esc(uri)})</label>
               <input type="text" id="${prefix}-yahoo-cid" placeholder="dj0yJmk9..." />
             </div>
             <div>
-              <label class="field-label">Yahoo Client Secret</label>
-              <input type="password" id="${prefix}-yahoo-csec" placeholder="Optional for PKCE" />
+              <label class="field-label">Yahoo OAuth Secret (Optional)</label>
+              <input type="password" id="${prefix}-yahoo-csec" placeholder="Optional" />
             </div>
           </div>
-          <button type="button" class="oauth-btn yahoo" onclick="startOAuth('yahoo', '${prefix}')">Sign in with Yahoo (OAuth2)</button>
+          <div style="border-top:2px solid #111;padding-top:10px;margin-top:8px;">
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Or Yahoo Email</label>
+                <input type="email" id="${prefix}-yahoo-email" value="${esc(cfg.provider === 'yahoo' ? (cfg.email || '') : '')}" placeholder="you@yahoo.com" />
+              </div>
+              <div>
+                <label class="field-label">Yahoo 2FA App Password</label>
+                <input type="password" id="${prefix}-yahoo-pass" placeholder="Generated in Yahoo Account Security" />
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-lime" onclick="saveDirectProvider('yahoo', '${prefix}')">Connect via 2FA App Password</button>
+          </div>
         </details>
       </div>
     `;
@@ -430,10 +447,18 @@ function renderSingleProviderWidgets() {
 }
 
 async function startOAuth(provider, prefix) {
+  const cidEl = document.getElementById(`${prefix}-${provider}-cid`);
+  const csecEl = document.getElementById(`${prefix}-${provider}-csec`);
+  const nameEl = document.getElementById(`${prefix}-${provider}-name`);
+  const hasReady = !!((STATE.mailCfg && STATE.mailCfg.oauth_ready && STATE.mailCfg.oauth_ready[provider]) || (cidEl && cidEl.value.trim()));
+
+  // Open popup synchronously inside user click handler so browser popup blockers NEVER block it!
+  let popup = null;
+  if (hasReady) {
+    popup = window.open('about:blank', `employmaxing_oauth_${provider}`, 'width=540,height=680');
+  }
+
   try {
-    const cidEl = document.getElementById(`${prefix}-${provider}-cid`);
-    const csecEl = document.getElementById(`${prefix}-${provider}-csec`);
-    const nameEl = document.getElementById(`${prefix}-${provider}-name`);
     const res = await api(`/api/oauth/${provider}/start`, {
       method: 'POST',
       body: JSON.stringify({
@@ -442,14 +467,24 @@ async function startOAuth(provider, prefix) {
         display_name: nameEl ? nameEl.value.trim() : '',
       }),
     });
-    const popup = window.open(res.auth_url, `employmaxing_oauth_${provider}`, 'width=560,height=700');
-    if (!popup) {
-      window.location.href = res.auth_url;
+    if (popup && !popup.closed) {
+      popup.location.href = res.auth_url;
+      toast(`Pick your ${provider.toUpperCase()} account in the popup to finish signing in...`);
     } else {
-      toast(`Complete ${provider.toUpperCase()} Sign-In in the popup window...`);
+      window.location.href = res.auth_url;
     }
   } catch (e) {
-    toast(e.message);
+    if (popup && !popup.closed) popup.close();
+    if (String(e.message).includes('OAUTH_NOT_REGISTERED')) {
+      const det = document.getElementById(`${prefix}-${provider}-setup`);
+      if (det) {
+        det.open = true;
+        det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      toast(`Paste a ${provider.toUpperCase()} Client ID once (or bundle it in employmaxing/oauth_defaults.json) to enable instant 1-click popups!`);
+    } else {
+      toast(e.message);
+    }
   }
 }
 

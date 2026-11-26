@@ -62,6 +62,61 @@ OAUTH_SPECS = {
 
 # In-memory short-lived PKCE state store (local loopback session only)
 _PENDING_OAUTH: dict[str, dict] = {}
+DEFAULTS_FILE = Path(__file__).resolve().parent / "oauth_defaults.json"
+
+
+def _load_bundled_oauth_defaults() -> dict:
+    if DEFAULTS_FILE.exists():
+        try:
+            return json.loads(DEFAULTS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _load_user_oauth_apps(store: EmploymaxingStore) -> dict:
+    p = store.data_dir / "oauth-apps.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_user_oauth_app(store: EmploymaxingStore, provider: str, client_id: str, client_secret: str = ""):
+    """Persist user's OAuth app credentials separately so switching/disconnecting mail never loses them."""
+    apps = _load_user_oauth_apps(store)
+    apps[provider] = {"client_id": client_id.strip(), "client_secret": client_secret.strip()}
+    p = store.data_dir / "oauth-apps.json"
+    p.write_text(json.dumps(apps, indent=2), encoding="utf-8")
+    os.chmod(p, 0o600)
+
+
+def resolve_oauth_client(store: EmploymaxingStore, provider: str, override_id: str = "", override_secret: str = "") -> tuple[str, str]:
+    """Resolve OAuth Client ID/Secret: explicit override -> ~/.employmaxing/oauth-apps.json -> env -> bundled defaults."""
+    spec = OAUTH_SPECS[provider]
+    user_apps = _load_user_oauth_apps(store).get(provider, {})
+    bundled = _load_bundled_oauth_defaults().get(provider, {})
+    existing = load_active_mail_config(store)
+    active_cid = existing.get("client_id", "") if existing.get("provider") == provider else ""
+    active_csec = existing.get("client_secret", "") if existing.get("provider") == provider else ""
+
+    cid = (
+        override_id.strip()
+        or user_apps.get("client_id", "").strip()
+        or active_cid.strip()
+        or os.environ.get(spec["env_client_id"], "").strip()
+        or bundled.get("client_id", "").strip()
+    )
+    csec = (
+        override_secret.strip()
+        or user_apps.get("client_secret", "").strip()
+        or active_csec.strip()
+        or os.environ.get(spec["env_client_secret"], "").strip()
+        or bundled.get("client_secret", "").strip()
+    )
+    return cid, csec
 
 
 def _b64url(raw: bytes) -> str:
@@ -167,9 +222,9 @@ def get_public_mail_status(store: EmploymaxingStore) -> dict:
     safe["configured"] = bool(provider and (has_oauth or has_pass or has_api or cfg.get("connected")))
     safe["has_client_id"] = bool(cfg.get("client_id"))
     safe["has_refresh_token"] = bool(cfg.get("refresh_token"))
-    safe["env_oauth_ready"] = {
-        prov: bool(os.environ.get(spec["env_client_id"]))
-        for prov, spec in OAUTH_SPECS.items()
+    safe["oauth_ready"] = {
+        prov: bool(resolve_oauth_client(store, prov)[0])
+        for prov in OAUTH_SPECS
     }
     return safe
 
@@ -188,23 +243,13 @@ def start_oauth_flow(
         raise ValueError(f"OAuth2 sign-in is supported for google, microsoft, and yahoo (got '{provider}').")
 
     spec = OAUTH_SPECS[provider]
-    existing = load_active_mail_config(store)
-    cid = (
-        client_id.strip()
-        or os.environ.get(spec["env_client_id"], "").strip()
-        or (existing.get("client_id", "") if existing.get("provider") == provider else "")
-    )
-    csec = (
-        client_secret.strip()
-        or os.environ.get(spec["env_client_secret"], "").strip()
-        or (existing.get("client_secret", "") if existing.get("provider") == provider else "")
-    )
+    cid, csec = resolve_oauth_client(store, provider, client_id, client_secret)
 
     if not cid:
-        raise ValueError(
-            f"A {spec['label']} OAuth Client ID is required once (set in the box below or via {spec['env_client_id']}). "
-            f"Redirect URI to register: {redirect_uri}"
-        )
+        raise ValueError(f"OAUTH_NOT_REGISTERED:{provider}")
+
+    if client_id.strip():
+        save_user_oauth_app(store, provider, cid, csec)
 
     state = secrets.token_urlsafe(24)
     verifier, challenge = _generate_pkce()
