@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EMPLOYMAXING // Local Career Command Center</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Left Navigation Rail -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <div class="brand-title">EMPLOYMAXING</div>
+        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.0</div>
+      </div>
+
+      <nav class="nav-list" id="nav-list">
+        <button class="nav-btn active" data-view="dashboard">
+          <span>01 // Overview</span>
+        </button>
+        <button class="nav-btn" data-view="consent">
+          <span>02 // Info &amp; Consent</span>
+          <span class="nav-badge alert" id="badge-pending-facts">0</span>
+        </button>
+        <button class="nav-btn" data-view="profile">
+          <span>03 // Profile &amp; LinkedIn</span>
+        </button>
+        <button class="nav-btn" data-view="jobs">
+          <span>04 // Jobs &amp; Apps</span>
+          <span class="nav-badge" id="badge-jobs">0</span>
+        </button>
+        <button class="nav-btn" data-view="mailbox">
+          <span>05 // Mailbox &amp; Sent</span>
+          <span class="nav-badge" id="badge-mail">0</span>
+        </button>
+        <button class="nav-btn" data-view="forms">
+          <span>06 // Complex Forms</span>
+          <span class="nav-badge" id="badge-forms">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div><strong>HOST:</strong> 127.0.0.1 (PRIVATE)</div>
+        <div id="footer-datadir" style="margin-top:4px;word-break:break-all;">DATA: ~/.employmaxing</div>
+        <div style="margin-top:8px;">
+          <button class="btn btn-sm btn-lime" onclick="refreshAll()">SYNC STATE</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      <!-- 01 // OVERVIEW -->
+      <section id="view-dashboard" class="view-section active">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Command Overview</h1>
+            <p class="page-sub">Full visibility into every fact used, every email sent, every reply received, and every ATS form planned.</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-yellow" onclick="switchView('consent')">Review Planned Info</button>
+            <button class="btn btn-lime" onclick="scanInboxNow()">Scan Mailbox Now</button>
+          </div>
+        </div>
+
+        <div id="dashboard-alerts"></div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card bg-lime">
+            <div class="kpi-label">Approved Facts</div>
+            <div class="kpi-value" id="kpi-approved-facts">0</div>
+          </div>
+          <div class="kpi-card bg-yellow">
+            <div class="kpi-label">Pending Consent</div>
+            <div class="kpi-value" id="kpi-pending-facts">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Tracked Jobs</div>
+            <div class="kpi-value" id="kpi-jobs">0</div>
+          </div>
+          <div class="kpi-card bg-mint">
+            <div class="kpi-label">Active Interviews</div>
+            <div class="kpi-value" id="kpi-interviews">0</div>
+          </div>
+          <div class="kpi-card bg-blue">
+            <div class="kpi-label">Emails Sent</div>
+            <div class="kpi-value" id="kpi-sent">0</div>
+          </div>
+          <div class="kpi-card bg-violet">
+            <div class="kpi-label">Inbox Replies</div>
+            <div class="kpi-value" id="kpi-replies">0</div>
+          </div>
+          <div class="kpi-card bg-coral">
+            <div class="kpi-label">Forms Awaiting OK</div>
+            <div class="kpi-value" id="kpi-forms">0</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Transparency Activity Log</h2>
+            <span class="tag tag-black">LIVE AUDIT TRAIL</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Timestamp</th><th>Event</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="events-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 // INFO & CONSENT LEDGER -->
+      <section id="view-consent" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Information &amp; Consent Ledger</h1>
+            <p class="page-sub">Nothing marked PENDING REVIEW is ever inserted into a resume, email, or application form until you approve it.</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-lime" onclick="approveAllFacts()">Approve All Pending</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Discover &amp; Enrich Your Profile (Resume, LinkedIn, GitHub, Portfolio)</h2>
+            <span class="tag tag-yellow">NEW DISCOVERIES LAND IN PENDING</span>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label class="field-label">Resume File Path (PDF/DOCX/MD)</label>
+              <input type="text" id="enrich-resume-path" placeholder="/path/to/resume.pdf" />
+            </div>
+            <div>
+              <label class="field-label">LinkedIn Export Path (Profile.pdf / ZIP)</label>
+              <input type="text" id="enrich-linkedin-path" placeholder="/path/to/Profile.pdf" />
+            </div>
+            <div>
+              <label class="field-label">GitHub Username or URL</label>
+              <input type="text" id="enrich-github" placeholder="subsurfmod" />
+            </div>
+            <div>
+              <label class="field-label">Personal Website / Portfolio URL</label>
+              <input type="url" id="enrich-website" placeholder="https://yoursite.dev" />
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label class="field-label">Or Paste Resume / CV Text Directly</label>
+            <textarea id="enrich-resume-text" placeholder="Paste full resume text here if you prefer not to supply a file path..."></textarea>
+          </div>
+          <button class="btn btn-black" onclick="runEnrichment()">Run Transparent Discovery</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Discovered &amp; Planned Personal Facts</h2>
+            <div class="subtabs" id="fact-filter-tabs" style="margin-bottom:0;">
+              <button class="subtab active" data-filter="all" onclick="filterFacts('all', this)">All</button>
+              <button class="subtab" data-filter="pending_review" onclick="filterFacts('pending_review', this)">Pending Review</button>
+              <button class="subtab" data-filter="approved" onclick="filterFacts('approved', this)">Approved</button>
+              <button class="subtab" data-filter="rejected" onclick="filterFacts('rejected', this)">Rejected</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Category &amp; Key</th>
+                  <th>Information Value (Editable)</th>
+                  <th>Source &amp; Planned Usage</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="facts-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Add Custom Approved Fact</h2>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label class="field-label">Category</label>
+              <select id="new-fact-cat">
+                <option value="achievement">Achievement (XYZ Metric)</option>
+                <option value="skill">Skill / Tool</option>
+                <option value="contact">Contact Detail</option>
+                <option value="form_default">Form Fill Default (Work Auth / Notice)</option>
+                <option value="social_link">Social / Portfolio Link</option>
+                <option value="preference">Job Preference</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Fact Key</label>
+              <input type="text" id="new-fact-key" placeholder="e.g. work_authorization or win_revenue" />
+            </div>
+            <div>
+              <label class="field-label">Planned Usage</label>
+              <input type="text" id="new-fact-usage" value="resume,outreach_mail,form_fill" />
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label class="field-label">Fact Value</label>
+            <input type="text" id="new-fact-val" placeholder="Exact verified detail to include..." />
+          </div>
+          <button class="btn btn-lime" onclick="addCustomFact()">Save Approved Fact</button>
+        </div>
+      </section>
+
+      <!-- 03 // MASTER PROFILE & LINKEDIN AUDITOR -->
+      <section id="view-profile" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Master Profile &amp; LinkedIn Auditor</h1>
+            <p class="page-sub">Your compiled user-approved career profile + 12-point LinkedIn discrepancy &amp; recruiter turn-off fixer.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Approved Master Profile</h2>
+              <span class="tag tag-lime" id="profile-approved-badge">0 FACTS</span>
+            </div>
+            <div id="master-profile-body"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">LinkedIn Discrepancy &amp; Turn-Off Audit</h2>
+              <span class="tag tag-coral">DATES / TITLES / #OPENTOWORK / SEO</span>
+            </div>
+            <div style="margin-bottom:10px;">
+              <label class="field-label">LinkedIn Save-to-PDF / Export Path (Optional)</label>
+              <input type="text" id="li-audit-path" placeholder="/path/to/Profile.pdf" />
+            </div>
+            <div style="margin-bottom:10px;">
+              <label class="field-label">Or Paste Full LinkedIn Profile Text</label>
+              <textarea id="li-audit-text" placeholder="Paste your LinkedIn Headline, About, Experience dates/titles, Skills, and URL..."></textarea>
+            </div>
+            <button class="btn btn-coral" onclick="runLinkedInAudit()">Audit LinkedIn vs. Resume &amp; Serve Fixes</button>
+            <div id="li-audit-output" style="margin-top:16px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 // JOBS & CUSTOM APPLICATIONS -->
+      <section id="view-jobs" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Potential Jobs &amp; Custom Applications</h1>
+            <p class="page-sub">&lt;48h Direct ATS Radar, Ghost-Job Risk Filter, Tailored &gt;=85-Score Resumes, and PDF/DOCX Downloads.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Add Potential Job &amp; Run Ghost-Job Triage</h2>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Company</label>
+                <input type="text" id="job-company" placeholder="Stripe" />
+              </div>
+              <div>
+                <label class="field-label">Role Title</label>
+                <input type="text" id="job-role" placeholder="Staff Backend Engineer" />
+              </div>
+              <div>
+                <label class="field-label">Direct ATS URL</label>
+                <input type="url" id="job-url" placeholder="https://jobs.ashbyhq.com/..." />
+              </div>
+              <div>
+                <label class="field-label">Days Old</label>
+                <input type="number" id="job-days" value="1" min="0" />
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label class="field-label">Job Posting Description (For Ghost Audit &amp; Salary Anchor)</label>
+              <textarea id="job-posting" placeholder="Paste job description including salary range if posted..."></textarea>
+            </div>
+            <button class="btn btn-lime" onclick="addJob()">Add &amp; Triage Job</button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">&lt;48h Direct ATS Fresh-Job Radar</h2>
+              <span class="tag tag-blue">3x–5x EARLY-APPLY BOOST</span>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Target Roles (Comma-Separated)</label>
+                <input type="text" id="dork-roles" value="Staff Software Engineer, Platform Engineer" />
+              </div>
+              <div>
+                <label class="field-label">Location</label>
+                <input type="text" id="dork-loc" value="Remote" />
+              </div>
+            </div>
+            <button class="btn btn-blue" onclick="loadDorks()">Generate Fresh &lt;48h ATS Searches</button>
+            <div id="dorks-output" style="margin-top:14px;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Job Pipeline &amp; Custom Application Workspace</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company &amp; Role</th>
+                  <th>Priority / Ghost Risk</th>
+                  <th>Stage</th>
+                  <th>ATS / Salary</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" id="job-inspector-card" style="display:none;">
+          <div class="card-header">
+            <h2 class="card-title" id="inspector-title">Custom Application Inspector</h2>
+            <div class="btn-row" id="inspector-downloads"></div>
+          </div>
+          <div id="inspector-body"></div>
+        </div>
+      </section>
+
+      <!-- 05 // MAILBOX & SENT LOG -->
+      <section id="view-mailbox" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Mailbox, Replies &amp; Sent Mail</h1>
+            <p class="page-sub">IMAP reply monitoring with automatic interview detection + plain-text Lavender/Gong scored outbox.</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-lime" onclick="scanInboxNow()">Scan Inbox (IMAP)</button>
+            <button class="btn btn-yellow" onclick="sendApprovedNow(true)">Dry-Run Approved</button>
+            <button class="btn btn-black" onclick="sendApprovedNow(false)">Send Approved Mail</button>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Compose Plain-Text Outreach + MX Check</h2>
+              <span class="tag tag-yellow">0 ATTACHMENTS ON TOUCH #1</span>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Recipient Email</label>
+                <input type="email" id="mail-to" placeholder="alex@company.com" />
+              </div>
+              <div>
+                <label class="field-label">Recipient Name</label>
+                <input type="text" id="mail-name" placeholder="Alex Rivera" />
+              </div>
+              <div>
+                <label class="field-label">Subject (3–6 words, lowercase)</label>
+                <input type="text" id="mail-subject" placeholder="scaling k8s pipelines at stripe" />
+              </div>
+              <div>
+                <label class="field-label">Linked Job ID (Optional)</label>
+                <input type="text" id="mail-job-id" placeholder="stripe-staff-engineer" />
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label class="field-label">Plain-Text Body (45–95 words, 1 XYZ metric, interest question CTA)</label>
+              <textarea id="mail-body" placeholder="Hi Alex,&#10;&#10;Saw your team is scaling..."></textarea>
+            </div>
+            <button class="btn btn-lime" onclick="queueEmail()">Score, MX-Check &amp; Queue for Approval</button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">IMAP / SMTP Mailbox Connection</h2>
+              <span class="tag" id="mail-cfg-status">CHECKING...</span>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label class="field-label">Provider</label>
+                <select id="cfg-provider">
+                  <option value="gmail">Gmail (App Password)</option>
+                  <option value="outlook">Outlook / Microsoft 365</option>
+                  <option value="fastmail">Fastmail</option>
+                  <option value="icloud">iCloud Mail</option>
+                  <option value="custom">Custom IMAP/SMTP</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">Email Address</label>
+                <input type="email" id="cfg-email" placeholder="you@gmail.com" />
+              </div>
+              <div>
+                <label class="field-label">App Password (Stored Local chmod 600)</label>
+                <input type="password" id="cfg-pass" placeholder="xxxx xxxx xxxx xxxx" />
+              </div>
+              <div>
+                <label class="field-label">Display Name</label>
+                <input type="text" id="cfg-display" placeholder="Jane Doe" />
+              </div>
+            </div>
+            <button class="btn btn-black" onclick="saveMailConfigUI()">Save Local Mailbox Credentials</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Complete Mailbox Ledger</h2>
+            <div class="subtabs" style="margin-bottom:0;">
+              <button class="subtab active" onclick="filterEmails('all', this)">All Mail</button>
+              <button class="subtab" onclick="filterEmails('inbound_reply', this)">Inbox Replies</button>
+              <button class="subtab" onclick="filterEmails('pending_approval', this)">Outbox Pending</button>
+              <button class="subtab" onclick="filterEmails('outbound_sent', this)">Sent Mail</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID / Type</th>
+                  <th>Contact &amp; Subject</th>
+                  <th>Classification / Score / MX</th>
+                  <th>Body Preview &amp; Facts Used</th>
+                  <th>Status / Action</th>
+                </tr>
+              </thead>
+              <tbody id="emails-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 06 // COMPLEX FORM FILLS -->
+      <section id="view-forms" class="view-section">
+        <div class="top-bar">
+          <div>
+            <h1 class="page-title">Complex ATS Form Fills</h1>
+            <p class="page-sub">Inspect every field, 75th-pct salary anchor, knockout safeguard, attached PDF, and CDP verification screenshot.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Generate Knockout-Safe Form Plan (Approved Facts Only)</h2>
+          </div>
+          <div class="form-grid">
+            <div>
+              <label class="field-label">Tracked Job ID</label>
+              <input type="text" id="form-job-id" placeholder="e.g. stripe-staff-backend-engineer" />
+            </div>
+            <div>
+              <label class="field-label">Override Application Form URL (Optional)</label>
+              <input type="url" id="form-url" placeholder="https://jobs.ashbyhq.com/..." />
+            </div>
+          </div>
+          <button class="btn btn-blue" onclick="createFormPlan()">Build Transparent Form Plan</button>
+        </div>
+
+        <div id="forms-container"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

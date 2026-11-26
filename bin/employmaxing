@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""
+employmaxing - Portable Unified CLI for Employmaxing (GPL-3.0).
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PKG_DIR = REPO_ROOT / "employmaxing"
+SHARED_SCRIPTS = REPO_ROOT / "shared" / "scripts"
+DATA_DIR = Path.home() / ".employmaxing"
+
+
+def print_help():
+    print("""EMPLOYMAXING v1.0 (GPL-3.0) — Empirical Interview-Maximization & Local Web Dashboard
+
+Usage:
+  employmaxing <command> [arguments...]
+
+Commands:
+  serve [--port 8787] [--host 127.0.0.1]       Launch Neo-Brutalist Local Web Dashboard
+  enrich [--resume F] [--linkedin F] [--github U] [--website URL]
+                                               Discover & build Master Profile (with Consent Ledger)
+  mail <configure|scan-inbox|queue|send> ...   IMAP reply scanner & plain-text SMTP outreach sender
+  form <plan|execute> ...                      Complex ATS form plans & native Chrome CDP filling
+  linkedin-audit --linkedin F --resume R       12-point LinkedIn vs. Resume discrepancy & turn-off fixer
+  audit-resume <resume> [--jd posting.md]      0-100 empirical XYZ resume gate & autofixer
+  audit-mail <file> [--mode cold-email|...]    0-100 Lavender/Gong mail & <=295c LinkedIn note gate
+  email-find --first F --last L --domain D     Corporate email permutations + live DNS MX audit
+  form-plan <posting.md>                       75th-pct salary anchor, YOE & knockout warnings
+  job-audit <posting.md> [--days-old N]        Ghost-job detector & P0-P3 priority tiering
+  dorks --roles "R1,R2" [--hours 48]           <24h/<48h direct ATS queries (Ashby, Greenhouse, Lever, YC)
+  parse <file>                                 Extract text & metadata from PDF/DOCX resume
+  export <resume.md|last>                      Compile ATS single-column PDF & DOCX
+  tracker [view|update ...]                    View or update application pipeline
+  help                                         Show this help message
+""")
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print_help()
+        sys.exit(0)
+
+    cmd = sys.argv[1].lower()
+    rest = sys.argv[2:]
+
+    dispatch = {
+        "serve": [sys.executable, str(PKG_DIR / "server.py")] + rest,
+        "enrich": [sys.executable, str(PKG_DIR / "enricher.py")] + rest,
+        "mail": [sys.executable, str(PKG_DIR / "mailbox.py")] + rest,
+        "form": [sys.executable, str(PKG_DIR / "form_filler.py")] + rest,
+        "linkedin-audit": [sys.executable, str(SHARED_SCRIPTS / "linkedin_audit.py")] + rest,
+        "parse": [sys.executable, str(SHARED_SCRIPTS / "parse_resume.py")] + rest,
+        "export": [sys.executable, str(SHARED_SCRIPTS / "export_document.py")] + rest,
+        "tracker": [sys.executable, str(SHARED_SCRIPTS / "tracker.py"), str(DATA_DIR)] + (rest or ["view"]),
+        "audit-resume": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "resume"] + rest,
+        "audit-mail": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "mail"] + rest,
+        "email-find": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "email-find"] + rest,
+        "form-plan": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "form-plan"] + rest,
+        "job-audit": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "job-audit"] + rest,
+        "dorks": [sys.executable, str(SHARED_SCRIPTS / "optimizer.py"), "dorks"] + rest,
+    }
+
+    if cmd in dispatch:
+        sys.exit(subprocess.call(dispatch[cmd]))
+
+    print(f"Unknown command: {cmd}\n")
+    print_help()
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

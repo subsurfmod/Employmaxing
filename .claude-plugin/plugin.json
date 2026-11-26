@@ -1,0 +1,23 @@
+{
+  "name": "employmaxing",
+  "description": "Empirical interview-maximization & transparent career automation Agent Skill with Neo-Brutalist local web dashboard, IMAP/SMTP mailbox automation, LinkedIn discrepancy auditor, and complex ATS CDP form filling",
+  "version": "1.0.0",
+  "author": {
+    "name": "subsurfmod",
+    "url": "https://github.com/subsurfmod"
+  },
+  "homepage": "https://github.com/subsurfmod/Employmaxing",
+  "repository": "https://github.com/subsurfmod/Employmaxing",
+  "license": "GPL-3.0-or-later",
+  "keywords": [
+    "agent-skill",
+    "job-search",
+    "employmaxing",
+    "resume-optimizer",
+    "linkedin-audit",
+    "imap-smtp",
+    "ats-form-filler",
+    "neo-brutalist-ui",
+    "gplv3"
+  ]
+}

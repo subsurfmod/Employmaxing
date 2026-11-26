@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.db
+*.db-wal
+*.db-shm
+.employmaxing/
+mail-config.json
+telegram-config.md
+.env
+.DS_Store
+screenshots/
+*.tmp
