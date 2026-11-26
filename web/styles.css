@@ -400,6 +400,9 @@ td {
 
 tr:hover td { background: #FFFBEA; }
 
+#facts-tbody td:nth-child(3) { min-width: 280px; }
+#jobs-tbody td:nth-child(3) select { min-width: 155px; }
+
 .mono { font-family: var(--font-mono); font-size: 0.82rem; }
 
 pre.code-block {

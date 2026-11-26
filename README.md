@@ -6,6 +6,28 @@
 
 ---
 
+## Visual Preview (Neo-Brutalist High-Contrast Local Web Dashboard)
+
+### Command Overview & Live Audit Trail
+![Employmaxing Command Overview](docs/images/01-overview.png)
+
+### Information & Consent Ledger (Every Discovered Fact Requires Approval)
+![Employmaxing Information and Consent Ledger](docs/images/02-info-consent.png)
+
+### Approved Master Profile & 12-Point LinkedIn Discrepancy Auditor
+![Employmaxing LinkedIn Discrepancy Auditor](docs/images/03-linkedin-audit.png)
+
+### Custom Job Input, `<48h` Direct ATS Radar, Potential Jobs & Jobs Applied To
+![Employmaxing Potential Jobs and Applied Jobs](docs/images/04-jobs-apps.png)
+
+### Mailbox Reply Monitor (`INTERVIEW_INVITE`), Outbox Queue & Sent Mail Ledger
+![Employmaxing Mailbox and Sent Ledger](docs/images/05-mailbox-sent.png)
+
+### Complex ATS Form Fills (75th-Pct Salary Anchor, Knockout Warnings & CDP PDF Uploads)
+![Employmaxing Complex ATS Form Fills](docs/images/06-complex-forms.png)
+
+---
+
 ## Why Employmaxing?
 
 Cold portal applications convert at **1–2%**, ~25% of online listings are **ghost jobs**, and ~85% of recruiters silently disqualify shortlisted candidates over **LinkedIn-vs-Resume date/title discrepancies, `#OpenToWork` stigma, bloated >800w resumes, cold-email PDF spam quarantine, or accidental ATS knockout answers**.
