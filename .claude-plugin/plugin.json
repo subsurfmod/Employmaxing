@@ -1,7 +1,7 @@
 {
   "name": "employmaxing",
   "description": "Zero-CLI local-first interview-maximization Agent Skill with First-Time Setup Wizard, Mozilla Thunderbird 1-click bridge + Google/Microsoft OAuth2 mail, Neo-Brutalist web UI, LinkedIn discrepancy auditor, and complex ATS CDP form filling",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": {
     "name": "subsurfmod",
     "url": "https://github.com/subsurfmod"

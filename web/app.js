@@ -932,6 +932,20 @@ function copyText(txt) {
   navigator.clipboard.writeText(txt).then(() => toast('Copied to clipboard!'));
 }
 
+async function fetchJobUrl() {
+  const url = document.getElementById('job-url').value.trim();
+  if (!url) return toast('Paste a job posting URL first.');
+  toast('Fetching job posting metadata & description...');
+  try {
+    const res = await api('/api/jobs/fetch-url', { method: 'POST', body: JSON.stringify({ url }) });
+    if (res.company) document.getElementById('job-company').value = res.company;
+    if (res.role) document.getElementById('job-role').value = res.role;
+    if (res.location) document.getElementById('job-location').value = res.location;
+    if (res.posting_text) document.getElementById('job-posting').value = res.posting_text;
+    toast(`Fetched ${res.company} — ${res.role} (${(res.ats_type || 'web').toUpperCase()})!`);
+  } catch (e) { toast(`Fetch failed: ${e.message}`); }
+}
+
 async function addJob(buildFormAfter = false) {
   try {
     const res = await api('/api/jobs', {
@@ -1048,20 +1062,48 @@ async function inspectJob(id) {
     const card = document.getElementById('job-inspector-card');
     card.style.display = 'block';
     document.getElementById('inspector-title').textContent = `Custom Application // ${res.job.company} — ${res.job.role}`;
-    document.getElementById('inspector-downloads').innerHTML = (res.downloads || [])
+    const dlHtml = (res.downloads || [])
       .map(d => `<a class="btn btn-sm btn-lime" href="${esc(d.url)}" target="_blank">Download ${esc(d.name)}</a>`)
       .join('');
+    document.getElementById('inspector-downloads').innerHTML = `
+      <button class="btn btn-sm btn-blue" onclick="exportJobDocs('${esc(id)}')">Compile ATS PDF &amp; DOCX</button>
+      ${dlHtml}
+    `;
 
     let html = '';
     if (res.resume_audit) {
       const sc = res.resume_audit.total_score;
-      html += `<div class="banner ${sc >= 85 ? 'ok' : 'warn'}"><span>EMPIRICAL RESUME SCORE: ${sc}/100 (${res.resume_audit.ready_to_ship ? 'READY TO SHIP' : 'NEEDS POLISH'})</span></div>`;
+      const missing = (res.resume_audit.breakdown && res.resume_audit.breakdown.jd_keywords_25 && res.resume_audit.breakdown.jd_keywords_25.missing) || [];
+      html += `
+        <div class="banner ${sc >= 85 ? 'ok' : 'warn'}">
+          <span>EMPIRICAL RESUME SCORE: ${sc}/100 (${res.resume_audit.ready_to_ship ? 'READY TO SHIP' : 'NEEDS POLISH <85'})</span>
+        </div>
+      `;
+      if (missing.length) {
+        html += `<div style="margin-bottom:10px;" class="mono"><strong>MISSING JD KEYWORDS TO WEAVE IN (IF TRUTHFUL):</strong> ${missing.slice(0, 10).map(k => `<span class="tag tag-yellow">${esc(k)}</span>`).join(' ')}</div>`;
+      }
+      if ((res.resume_audit.priority_fixes || []).length) {
+        html += `<div style="border:2px solid #111;background:#FFFDF0;padding:10px;margin-bottom:12px;" class="mono"><strong>TOP FIXES:</strong><br/>${res.resume_audit.priority_fixes.slice(0, 5).map((f, i) => `${i + 1}. ${esc(f)}`).join('<br/>')}</div>`;
+      }
     }
-    const entries = Object.entries(res.artifacts || {});
-    if (!entries.length) {
-      html += '<div class="empty-state">No tailored artifacts saved in this job folder yet.</div>';
-    } else {
-      html += entries.map(([fname, text]) => `
+
+    const resText = (res.artifacts && res.artifacts['resume.md']) || '';
+    html += `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span class="tag tag-black">LIVE RESUME EDITOR (resume.md)</span>
+          <div class="btn-row">
+            <button class="btn btn-sm btn-lime" onclick="saveAndScoreJobResume('${esc(id)}')">Save, Auto-Fix &amp; Re-Score</button>
+            <button class="btn btn-sm btn-blue" onclick="exportJobDocs('${esc(id)}')">Compile PDF &amp; DOCX</button>
+          </div>
+        </div>
+        <textarea id="live-resume-editor" style="min-height:240px;">${esc(resText)}</textarea>
+      </div>
+    `;
+
+    const otherEntries = Object.entries(res.artifacts || {}).filter(([k]) => k !== 'resume.md');
+    if (otherEntries.length) {
+      html += otherEntries.map(([fname, text]) => `
         <div style="margin-bottom:14px;">
           <div style="margin-bottom:6px;"><span class="tag tag-black">${esc(fname)}</span></div>
           <pre class="code-block">${esc(text)}</pre>
@@ -1070,6 +1112,65 @@ async function inspectJob(id) {
     }
     document.getElementById('inspector-body').innerHTML = html;
     card.scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { toast(e.message); }
+}
+
+async function saveAndScoreJobResume(id) {
+  const ed = document.getElementById('live-resume-editor');
+  try {
+    const res = await api(`/api/jobs/${encodeURIComponent(id)}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ content: ed ? ed.value : undefined, autofix: true }),
+    });
+    toast(`Resume saved & scored: ${res.audit.total_score}/100!`);
+    inspectJob(id);
+  } catch (e) { toast(e.message); }
+}
+
+async function exportJobDocs(id) {
+  toast('Compiling ATS single-column PDF & DOCX...');
+  try {
+    const res = await api(`/api/jobs/${encodeURIComponent(id)}/export`, { method: 'POST', body: '{}' });
+    toast(`Compiled ${(res.exported || []).length} ATS file(s)!`);
+    inspectJob(id);
+  } catch (e) { toast(e.message); }
+}
+
+async function findHiringManagerEmail() {
+  try {
+    const res = await api('/api/email-find', {
+      method: 'POST',
+      body: JSON.stringify({
+        first: document.getElementById('ef-first').value.trim(),
+        last: document.getElementById('ef-last').value.trim(),
+        domain: document.getElementById('ef-domain').value.trim(),
+      }),
+    });
+    const mx = res.mx || {};
+    document.getElementById('ef-output').innerHTML = `
+      <div class="mono" style="margin-bottom:6px;"><strong>MX GATEWAY:</strong> <span class="tag ${mx.valid_mx ? 'tag-lime' : 'tag-coral'}">${esc(mx.gateway)}</span> — ${esc(mx.deliverability_advice)}</div>
+      <div class="btn-row">
+        ${(res.permutations || []).map(p => `<button type="button" class="btn btn-sm btn-yellow" onclick="document.getElementById('mail-to').value='${esc(p.email)}';toast('Selected ${esc(p.email)}');">${esc(p.email)}</button>`).join('')}
+      </div>
+    `;
+  } catch (e) { toast(e.message); }
+}
+
+async function runFollowupCheck() {
+  toast('Checking inbox & due Day 3 / Day 7 follow-ups...');
+  try {
+    const res = await api('/api/automation/run-now', { method: 'POST', body: '{}' });
+    const fup = (res.followups && res.followups.queued_followups) || [];
+    toast(`Check complete! Drafted ${fup.length} due follow-up(s) into Outbox Pending.`);
+    refreshAll();
+  } catch (e) { toast(e.message); }
+}
+
+async function launchCDPBrowser() {
+  toast('Launching dedicated Employmaxing Chrome window (port 9222)...');
+  try {
+    const res = await api('/api/forms/launch-browser', { method: 'POST', body: '{}' });
+    toast(res.ready ? 'Automated Chrome CDP window is READY!' : (res.error || 'Could not launch Chrome'));
   } catch (e) { toast(e.message); }
 }
 

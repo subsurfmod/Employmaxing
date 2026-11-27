@@ -16,9 +16,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import struct
+import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -239,9 +242,73 @@ class MinimalCDPClient:
             pass
 
 
-def execute_cdp_fill(store: EmploymaxingStore, submission_id: int, cdp_port: int = 9222, auto_submit: bool = False) -> dict:
+def find_interactive_browser() -> str | None:
+    """Locate a Chromium-based desktop browser for zero-CLI CDP auto-launch."""
+    candidates = [
+        shutil.which("google-chrome"),
+        shutil.which("google-chrome-stable"),
+        shutil.which("chromium"),
+        shutil.which("chromium-browser"),
+        shutil.which("brave-browser"),
+        shutil.which("microsoft-edge"),
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def ensure_cdp_browser(store: EmploymaxingStore, cdp_port: int = 9222, start_url: str = "about:blank") -> dict:
+    """Check if CDP port is open; if not, auto-launch a dedicated persistent Chrome window."""
+    def _probe():
+        with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=2) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    try:
+        targets = _probe()
+        return {"ready": True, "launched_new": False, "targets": targets}
+    except Exception:
+        pass
+
+    browser = find_interactive_browser()
+    if not browser:
+        return {"ready": False, "error": "No Chromium-based browser (Chrome, Chromium, Brave, or Edge) found on PATH."}
+
+    profile_dir = store.data_dir / "chrome-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen(
+        [
+            browser,
+            f"--remote-debugging-port={cdp_port}",
+            f"--user-data-dir={str(profile_dir)}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            start_url or "about:blank",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    for _ in range(24):
+        time.sleep(0.35)
+        try:
+            targets = _probe()
+            if any(t.get("type") == "page" for t in targets):
+                store.log_event("chrome_cdp_launched", f"Auto-launched dedicated Chrome CDP window on port {cdp_port}")
+                return {"ready": True, "launched_new": True, "browser": browser, "targets": targets}
+        except Exception:
+            continue
+    return {"ready": False, "error": f"Launched {browser} but CDP port {cdp_port} did not respond in time."}
+
+
+def execute_cdp_fill(store: EmploymaxingStore, submission_id: int, cdp_port: int = 9222, auto_submit: bool = False, auto_launch: bool = True) -> dict:
     """
-    Connect to a local Chrome instance running with --remote-debugging-port=9222,
+    Connect to (or auto-launch) a local Chrome instance on --remote-debugging-port=9222,
     fill complex React/Ashby/Greenhouse/Lever/Workday fields, attach real PDF files via
     DOM.setFileInputFiles, and capture a pre-submit verification screenshot.
     """
@@ -250,16 +317,27 @@ def execute_cdp_fill(store: EmploymaxingStore, submission_id: int, cdp_port: int
     if not sub:
         return {"status": "error", "message": f"Form submission #{submission_id} not found."}
 
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=3) as r:
-            targets = json.loads(r.read().decode("utf-8"))
-    except Exception:
-        return {
-            "status": "cdp_unavailable",
-            "message": f"No local Chrome CDP endpoint found on port {cdp_port}. Start Chrome with `--remote-debugging-port={cdp_port}` or use Browser MCP mode with the generated field_plan.",
-            "field_plan": sub["field_plan"],
-            "files_attached": sub["files_attached"],
-        }
+    if auto_launch:
+        cdp_check = ensure_cdp_browser(store, cdp_port=cdp_port, start_url=sub["form_url"] or "about:blank")
+        if not cdp_check.get("ready"):
+            return {
+                "status": "cdp_unavailable",
+                "message": cdp_check.get("error", f"Could not connect to Chrome CDP on port {cdp_port}."),
+                "field_plan": sub["field_plan"],
+                "files_attached": sub["files_attached"],
+            }
+        targets = cdp_check["targets"]
+    else:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=3) as r:
+                targets = json.loads(r.read().decode("utf-8"))
+        except Exception:
+            return {
+                "status": "cdp_unavailable",
+                "message": f"No local Chrome CDP endpoint found on port {cdp_port}.",
+                "field_plan": sub["field_plan"],
+                "files_attached": sub["files_attached"],
+            }
 
     page_target = next((t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")), None)
     if not page_target:

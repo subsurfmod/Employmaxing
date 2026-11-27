@@ -12,7 +12,7 @@
     <aside class="sidebar">
       <div class="brand-box">
         <div class="brand-title">EMPLOYMAXING</div>
-        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.3</div>
+        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.4</div>
       </div>
 
       <nav class="nav-list" id="nav-list">
@@ -496,7 +496,10 @@
               </div>
               <div>
                 <label class="field-label">Direct ATS URL</label>
-                <input type="url" id="job-url" placeholder="https://jobs.ashbyhq.com/..." />
+                <div style="display:flex;gap:6px;">
+                  <input type="url" id="job-url" placeholder="https://jobs.ashbyhq.com/..." />
+                  <button type="button" class="btn btn-sm btn-yellow" onclick="fetchJobUrl()" style="white-space:nowrap;">Fetch URL</button>
+                </div>
               </div>
               <div>
                 <label class="field-label">Location / Remote</label>
@@ -593,6 +596,7 @@
           </div>
           <div class="btn-row">
             <button class="btn btn-lime" onclick="scanInboxNow()">Scan Inbox Now</button>
+            <button class="btn btn-blue" onclick="runFollowupCheck()">Check Day 3 / 7 Follow-Ups</button>
             <button class="btn btn-yellow" onclick="sendApprovedNow(true)">Dry-Run Approved</button>
             <button class="btn btn-black" onclick="sendApprovedNow(false)">Send Approved Mail</button>
           </div>
@@ -627,6 +631,16 @@
               <textarea id="mail-body" placeholder="Hi Alex,&#10;&#10;Saw your team is scaling..."></textarea>
             </div>
             <button class="btn btn-lime" onclick="queueEmail()">Score, MX-Check &amp; Queue for Approval</button>
+            <details class="brutal-details" style="margin-top:12px;">
+              <summary>Find Hiring Manager Email + Live DNS MX Check</summary>
+              <div class="form-grid" style="margin-top:8px;">
+                <div><label class="field-label">First Name</label><input type="text" id="ef-first" placeholder="Priya" /></div>
+                <div><label class="field-label">Last Name</label><input type="text" id="ef-last" placeholder="Nair" /></div>
+                <div><label class="field-label">Company Domain</label><input type="text" id="ef-domain" placeholder="stripe.com" /></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-black" onclick="findHiringManagerEmail()">Find Email &amp; Verify MX</button>
+              <div id="ef-output" style="margin-top:8px;"></div>
+            </details>
           </div>
 
           <div class="card">
@@ -670,7 +684,10 @@
         <div class="top-bar">
           <div>
             <h1 class="page-title">Complex ATS Form Fills</h1>
-            <p class="page-sub">Inspect every field, 75th-pct salary anchor, knockout safeguard, attached PDF, and CDP verification screenshot.</p>
+            <p class="page-sub">Inspect every field, 75th-pct salary anchor, knockout safeguard, attached PDF, and auto-launched Chrome CDP fill.</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-lime" onclick="launchCDPBrowser()">Launch Automated Chrome Window</button>
           </div>
         </div>
 

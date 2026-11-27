@@ -1,7 +1,8 @@
 # EMPLOYMAXING
 
+[![CI](https://github.com/subsurfmod/Employmaxing/actions/workflows/ci.yml/badge.svg)](https://github.com/subsurfmod/Employmaxing/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.3.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.3.0)
+[![Release](https://img.shields.io/badge/Release-v1.4.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.4.0)
 [![Agent Skill](https://img.shields.io/badge/Agent_Skill-Antigravity_%7C_Claude_Code-FFE135?labelColor=111111)](./SKILL.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4D8BFF?labelColor=111111)](https://www.python.org/)
 [![Local First](https://img.shields.io/badge/Privacy-100%25_Local_First-111111)](./employmaxing/server.py)
@@ -77,27 +78,24 @@ Cold portal applications convert at **1–2%**, ~25% of online listings are **gh
 
 ## Installation
 
-### 1. Clone & Install Python Dependencies
+### 1-Click Install (Linux & macOS — Includes Desktop App Launcher)
 ```bash
 git clone https://github.com/subsurfmod/Employmaxing.git
 cd Employmaxing
-pip install pypdf python-docx markdown requests beautifulsoup4
-chmod +x bin/employmaxing
+./install.sh
 ```
 
-### 2. Install as an Agent Skill (Antigravity / Claude Code)
-```bash
-# Antigravity (symlink into ~/.agents/skills/)
-ln -sfn "$(pwd)" ~/.agents/skills/employmaxing
-
-# Optional: global CLI shortcut
-ln -sfn "$(pwd)/bin/employmaxing" ~/.local/bin/employmaxing
+### Windows (PowerShell)
+```powershell
+git clone https://github.com/subsurfmod/Employmaxing.git
+cd Employmaxing
+.\install.ps1
 ```
 
-### 3. Launch the Local Web Dashboard
+### Launch the Local Web App (Auto-Opens Browser & First-Time Setup)
 ```bash
-./bin/employmaxing serve
-# Open http://127.0.0.1:8787
+employmaxing serve
+# Auto-opens http://127.0.0.1:8787 (or click "Employmaxing" in your desktop app menu)
 ```
 
 ---

@@ -375,6 +375,36 @@ def _scan_thunderbird_mbox(store: EmploymaxingStore, cfg: dict, days: int, limit
     return found, confirmed_sent
 
 
+def ingest_bridge_inbox_messages(store: EmploymaxingStore, messages: list[dict]) -> list[dict]:
+    """Process recent inbox messages pushed live by Thunderbird's messagesRead MailExtension API."""
+    if not messages:
+        return []
+    cfg = load_active_mail_config(store)
+    known_jobs = store.list_jobs()
+    sent_emails = store.list_emails(direction="outbound_sent")
+    sent_domains = {e["recipient_email"].split("@")[-1].lower() for e in sent_emails if "@" in e.get("recipient_email", "")}
+    sent_msg_ids = {e["message_id"] for e in sent_emails if e.get("message_id")}
+    company_tokens = {re.sub(r'[^a-z0-9]', '', j["company"].lower()): j for j in known_jobs if j.get("company")}
+    my_email = cfg.get("email", "")
+    ingested = []
+    for m in messages:
+        rec = _ingest_classified_message(
+            store,
+            my_email,
+            m.get("from", ""),
+            m.get("subject", ""),
+            m.get("body", ""),
+            m.get("message_id", ""),
+            m.get("in_reply_to", ""),
+            sent_domains,
+            sent_msg_ids,
+            company_tokens,
+        )
+        if rec:
+            ingested.append(rec)
+    return ingested
+
+
 def scan_inbox(store: EmploymaxingStore, days: int = 14, limit: int = 50) -> dict:
     """Scan the single active mail provider for recruiter/HM replies and update Jobs pipeline."""
     cfg = load_active_mail_config(store)

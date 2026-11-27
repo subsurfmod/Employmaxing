@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyyaml
+
+      - name: Validate all SKILL.md YAML frontmatters
+        run: |
+          python - <<'EOF'
+          import yaml
+          from pathlib import Path
+          files = [Path("SKILL.md")] + sorted(Path("skills").glob("*/SKILL.md"))
+          for sf in files:
+              parts = sf.read_text(encoding="utf-8").split("---", 2)
+              meta = yaml.safe_load(parts[1])
+              assert "name" in meta and "description" in meta, f"Invalid frontmatter in {sf}"
+          print(f"Validated {len(files)} SKILL.md files.")
+          EOF
+
+      - name: Validate JavaScript syntax (Web UI + Thunderbird Extension)
+        run: |
+          node --check web/app.js
+          node --check thunderbird-extension/background.js
+          node --check thunderbird-extension/popup.js
+
+      - name: Run Employmaxing unit & integration test suite
+        run: python -m unittest discover -s tests -v

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "employmaxing"
+version = "1.4.0"
+description = "Local-first AI Agent Skill for job hunting: Neo-Brutalist web UI, >=85-score XYZ resume optimizer, LinkedIn discrepancy auditor, Thunderbird auto-send bridge, and complex ATS CDP form filler."
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.10"
+authors = [{name = "subsurfmod", email = "subsurfmod@users.noreply.github.com"}]
+dependencies = [
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "markdown>=3.5.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/subsurfmod/Employmaxing"
+Repository = "https://github.com/subsurfmod/Employmaxing"
+
+[tool.setuptools.packages.find]
+include = ["employmaxing*"]

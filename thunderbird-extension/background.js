@@ -6,6 +6,48 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
 const BRIDGE_HEADER = "employmaxing-tb-v1";
 let isProcessing = false;
+let lastInboxSyncTs = 0;
+
+async function collectRecentInboxMessages(force = false) {
+  const now = Date.now();
+  if (!force && now - lastInboxSyncTs < 60000) return [];
+  if (!messenger.messages || !messenger.messages.query) return [];
+  lastInboxSyncTs = now;
+  try {
+    const fromDate = new Date(now - 7 * 86400 * 1000);
+    const page = await messenger.messages.query({ fromDate });
+    const msgs = (page && page.messages ? page.messages : []).slice(0, 35);
+    const out = [];
+    for (const m of msgs) {
+      let snippet = "";
+      try {
+        const full = await messenger.messages.getFull(m.id);
+        const findText = (part) => {
+          if (!part) return "";
+          if (part.contentType && part.contentType.toLowerCase().includes("text/plain") && part.body) return part.body;
+          if (part.parts) {
+            for (const p of part.parts) {
+              const t = findText(p);
+              if (t) return t;
+            }
+          }
+          return "";
+        };
+        snippet = findText(full).slice(0, 2000);
+      } catch (_) {}
+      out.push({
+        from: m.author || "",
+        subject: m.subject || "",
+        body: snippet,
+        message_id: m.headerMessageId || String(m.id || ""),
+        date: m.date ? new Date(m.date).toISOString() : "",
+      });
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
 
 async function getSettings() {
   const res = await messenger.storage.local.get({
@@ -68,7 +110,7 @@ async function sendViaThunderbird(job, identities) {
   }
 }
 
-async function pollEmploymaxing() {
+async function pollEmploymaxing(forceInbox = false) {
   if (isProcessing) return;
   const settings = await getSettings();
   if (settings.paused) {
@@ -79,6 +121,7 @@ async function pollEmploymaxing() {
   isProcessing = true;
   try {
     const identities = await listLocalIdentities();
+    const recentInbox = await collectRecentInboxMessages(forceInbox);
     const pollResp = await fetch(`${settings.baseUrl}/api/thunderbird/bridge/poll`, {
       method: "POST",
       headers: {
@@ -86,8 +129,9 @@ async function pollEmploymaxing() {
         "X-Employmaxing-Bridge": BRIDGE_HEADER,
       },
       body: JSON.stringify({
-        version: "1.3.0",
+        version: "1.4.0",
         accounts: identities.map((i) => ({ email: i.email, display_name: i.name })),
+        recent_inbox: recentInbox,
       }),
     });
 
@@ -154,9 +198,9 @@ messenger.alarms.onAlarm.addListener((alarm) => {
 setInterval(pollEmploymaxing, 5000);
 pollEmploymaxing();
 
-// Allow popup to trigger immediate poll
+// Allow popup to trigger immediate poll (including fresh inbox sync)
 messenger.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "poll_now") {
-    return pollEmploymaxing().then(() => ({ ok: true }));
+    return pollEmploymaxing(true).then(() => ({ ok: true }));
   }
 });

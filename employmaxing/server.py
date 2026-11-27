@@ -39,7 +39,9 @@ from employmaxing.enricher import (
     ingest_linkedin,
     ingest_resume,
 )
-from employmaxing.form_filler import build_transparent_form_plan, execute_cdp_fill
+from employmaxing.build_xpi import OUT_XPI, build_xpi
+from employmaxing.form_filler import build_transparent_form_plan, ensure_cdp_browser, execute_cdp_fill
+from employmaxing.job_fetcher import fetch_job_from_url
 from employmaxing.mail_oauth import (
     complete_oauth_callback,
     disconnect_mail_provider,
@@ -47,8 +49,13 @@ from employmaxing.mail_oauth import (
     save_single_provider_config,
     start_oauth_flow,
 )
-from employmaxing.build_xpi import OUT_XPI, build_xpi
-from employmaxing.mailbox import queue_outbound_email, scan_inbox, send_approved_emails
+from employmaxing.mailbox import (
+    ingest_bridge_inbox_messages,
+    queue_outbound_email,
+    scan_inbox,
+    send_approved_emails,
+)
+from employmaxing.scheduler import BackgroundAutomation, generate_due_followups
 from employmaxing.store import EmploymaxingStore
 from employmaxing.thunderbird import (
     discover_thunderbird,
@@ -56,6 +63,7 @@ from employmaxing.thunderbird import (
     install_addon_into_profile,
     record_bridge_heartbeat,
 )
+from export_document import export_docx, markdown_to_html, render_pdf_with_chrome
 from linkedin_audit import audit_linkedin_vs_resume, load_linkedin_data, render_markdown_report
 from optimizer import audit_job_posting, audit_resume, find_emails, generate_ats_dorks
 
@@ -112,9 +120,10 @@ def _build_onboarding_status(store: EmploymaxingStore) -> dict:
     }
 
 
-def make_handler(store: EmploymaxingStore):
+def make_handler(store: EmploymaxingStore, automation: BackgroundAutomation | None = None):
+    auto = automation or BackgroundAutomation(store)
     class EmploymaxingHandler(BaseHTTPRequestHandler):
-        server_version = "EmploymaxingLocal/1.1"
+        server_version = "EmploymaxingLocal/1.4"
 
         def _base_url(self) -> str:
             host_hdr = self.headers.get("Host")
@@ -289,6 +298,9 @@ def make_handler(store: EmploymaxingStore):
                 }
                 return self._send_json(info)
 
+            if path == "/api/automation":
+                return self._send_json(auto.get_config())
+
             if path == "/api/forms":
                 job_id = qs.get("job_id", [None])[0]
                 return self._send_json({"forms": store.list_form_submissions(job_id=job_id)})
@@ -456,6 +468,7 @@ def make_handler(store: EmploymaxingStore):
                     if self.headers.get("X-Employmaxing-Bridge") != "employmaxing-tb-v1":
                         return self._send_json({"error": "Missing Employmaxing Bridge header"}, 403)
                     record_bridge_heartbeat(version=data.get("version", ""), accounts=data.get("accounts"))
+                    ingested = ingest_bridge_inbox_messages(store, data.get("recent_inbox") or [])
                     cfg = get_public_mail_status(store)
                     from_email = cfg.get("email", "")
                     queued = store.list_emails(status="queued_for_bridge")
@@ -470,7 +483,7 @@ def make_handler(store: EmploymaxingStore):
                             "subject": e["subject"],
                             "body": e["body"],
                         })
-                    return self._send_json({"ok": True, "queue": out_jobs})
+                    return self._send_json({"ok": True, "queue": out_jobs, "ingested_replies": len(ingested)})
 
                 if path == "/api/thunderbird/bridge/ack":
                     if self.headers.get("X-Employmaxing-Bridge") != "employmaxing-tb-v1":
@@ -602,6 +615,63 @@ def make_handler(store: EmploymaxingStore):
                     store.log_event("linkedin_audited", f"LinkedIn Audit: {audit['discrepancy_count']} discrepancies, {audit['turn_off_count']} turn-offs (SEO {audit['credibility_and_seo_score']}/100)")
                     return self._send_json({"audit": audit, "markdown": md})
 
+                if path == "/api/jobs/fetch-url":
+                    fetched = fetch_job_from_url(data["url"])
+                    return self._send_json(fetched)
+
+                m_jres = re.match(r'^/api/jobs/([^/]+)/resume$', path)
+                if m_jres:
+                    job_id = urllib.parse.unquote(m_jres.group(1))
+                    job = store.get_job(job_id)
+                    if not job:
+                        return self._send_json({"error": "Job not found"}, 404)
+                    jdir = Path(job.get("folder_path") or (store.data_dir / "jobs" / job_id))
+                    jdir.mkdir(parents=True, exist_ok=True)
+                    rpath = jdir / "resume.md"
+                    if data.get("content") is not None:
+                        rpath.write_text(data["content"], encoding="utf-8")
+                    if not rpath.exists():
+                        # Seed from master resume if job folder has no tailored resume yet
+                        master_r = store.data_dir / "resume" / "resume.md"
+                        if master_r.exists():
+                            rpath.write_text(master_r.read_text(encoding="utf-8"), encoding="utf-8")
+                        else:
+                            return self._send_json({"error": "No resume content available yet."}, 400)
+                    audit = audit_resume(rpath, (jdir / "posting.md") if (jdir / "posting.md").exists() else None, autofix=bool(data.get("autofix", True)))
+                    store.upsert_job({"id": job_id, "resume_score": audit["total_score"]})
+                    return self._send_json({"content": rpath.read_text(encoding="utf-8"), "audit": audit})
+
+                m_jexp = re.match(r'^/api/jobs/([^/]+)/export$', path)
+                if m_jexp:
+                    job_id = urllib.parse.unquote(m_jexp.group(1))
+                    job = store.get_job(job_id)
+                    if not job:
+                        return self._send_json({"error": "Job not found"}, 404)
+                    jdir = Path(job.get("folder_path") or (store.data_dir / "jobs" / job_id))
+                    exported = []
+                    for fname, dtype in (("resume.md", "resume"), ("cover-letter.md", "cover-letter")):
+                        fp = jdir / fname
+                        if not fp.exists():
+                            continue
+                        md_text = fp.read_text(encoding="utf-8")
+                        pdf_p = fp.with_suffix(".pdf")
+                        docx_p = fp.with_suffix(".docx")
+                        if render_pdf_with_chrome(markdown_to_html(md_text, doc_type=dtype), pdf_p):
+                            exported.append({"name": pdf_p.name, "url": f"/api/files/jobs/{job_id}/{pdf_p.name}"})
+                        export_docx(md_text, docx_p, doc_type=dtype)
+                        exported.append({"name": docx_p.name, "url": f"/api/files/jobs/{job_id}/{docx_p.name}"})
+                    store.log_event("artifacts_exported", f"Compiled {len(exported)} ATS PDF/DOCX file(s) for {job['company']}")
+                    return self._send_json({"exported": exported})
+
+                if path == "/api/automation":
+                    return self._send_json(auto.save_config(data))
+
+                if path == "/api/automation/run-now":
+                    return self._send_json(auto.run_once())
+
+                if path == "/api/forms/launch-browser":
+                    return self._send_json(ensure_cdp_browser(store, cdp_port=int(data.get("cdp_port", 9222)), start_url=data.get("url", "about:blank")))
+
                 if path == "/api/jobs":
                     slug = data.get("id") or re.sub(r'[^a-z0-9]+', '-', f"{data.get('company', 'company')}-{data.get('role', 'role')}".lower()).strip("-")
                     data["id"] = slug
@@ -713,7 +783,9 @@ def make_handler(store: EmploymaxingStore):
 
 def run_server(host: str = "127.0.0.1", port: int = 8787, data_dir: str | None = None, open_browser: bool = True):
     store = EmploymaxingStore(data_dir)
-    srv = ThreadingHTTPServer((host, port), make_handler(store))
+    auto = BackgroundAutomation(store)
+    auto.start()
+    srv = ThreadingHTTPServer((host, port), make_handler(store, automation=auto))
     url = f"http://{host}:{port}"
     print(f"Employmaxing Local Web App running at {url} (data: {store.data_dir})", flush=True)
     if open_browser:
@@ -728,6 +800,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8787, data_dir: str | None =
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down Employmaxing server.")
+        auto.stop()
         srv.server_close()
 
 

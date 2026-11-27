@@ -194,9 +194,12 @@ def discover_thunderbird(custom_profile_dir: str | None = None) -> dict:
             if not mroot.exists():
                 continue
             for fp in mroot.rglob("*"):
-                if not fp.is_file() or fp.suffix.lower() in {".msf", ".dat", ".sbd", ".json", ".sqlite"}:
+                if fp.suffix.lower() in {".msf", ".dat", ".sbd", ".json", ".sqlite"}:
                     continue
                 lname = fp.name.lower()
+                is_maildir = fp.is_dir() and ((fp / "cur").is_dir() or (fp / "new").is_dir())
+                if not (fp.is_file() or is_maildir):
+                    continue
                 if lname in {"inbox", "all mail"}:
                     inbox_files.append(str(fp))
                 elif lname in {"sent", "sent mail", "sent items", "sent messages"}:
@@ -263,9 +266,54 @@ def _extract_plain_body(msg: email.message.Message) -> str:
     return ""
 
 
+def read_recent_maildir_messages(maildir_path: Path, days: int = 14, limit: int = 60) -> list[dict]:
+    """Read Thunderbird Maildir storage (`cur/` and `new/` per-message files) sorted newest first."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    files = []
+    for sub in ("new", "cur"):
+        sdir = maildir_path / sub
+        if sdir.is_dir():
+            for fp in sdir.iterdir():
+                if fp.is_file():
+                    files.append(fp)
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    messages = []
+    for fp in files[: limit * 2]:
+        try:
+            msg = email.message_from_bytes(fp.read_bytes())
+        except Exception:
+            continue
+        date_hdr = msg.get("Date")
+        if date_hdr:
+            try:
+                dt = parsedate_to_datetime(date_hdr)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < cutoff:
+                    continue
+            except Exception:
+                pass
+        messages.append({
+            "from": _decode_hdr(msg.get("From")),
+            "to": _decode_hdr(msg.get("To")),
+            "subject": _decode_hdr(msg.get("Subject")),
+            "body": _extract_plain_body(msg)[:4000],
+            "message_id": (msg.get("Message-ID") or "").strip(),
+            "in_reply_to": (msg.get("In-Reply-To") or "").strip(),
+            "date": date_hdr or "",
+        })
+        if len(messages) >= limit:
+            break
+    return messages
+
+
 def read_recent_mbox_messages(mbox_path: Path, days: int = 14, limit: int = 60) -> list[dict]:
-    """Fast, read-only tail reader for Thunderbird mbox files (handles multi-GB inboxes in <150ms)."""
-    if not mbox_path.exists() or not mbox_path.is_file():
+    """Fast, read-only reader supporting BOTH Thunderbird mbox files (<150ms tail) AND Maildir folders."""
+    if not mbox_path.exists():
+        return []
+    if mbox_path.is_dir():
+        return read_recent_maildir_messages(mbox_path, days=days, limit=limit)
+    if not mbox_path.is_file():
         return []
     size = mbox_path.stat().st_size
     if size == 0:
