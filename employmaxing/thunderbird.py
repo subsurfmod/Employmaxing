@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
@@ -23,6 +24,66 @@ from pathlib import Path
 
 # Read at most the last 16 MB of huge multi-GB INBOX mbox files for instant <150ms scanning
 MAX_MBOX_TAIL_BYTES = 16 * 1024 * 1024
+ADDON_ID = "employmaxing-bridge@subsurfmod.github.io"
+
+# Live in-memory heartbeat state reported by the Thunderbird Companion Add-on
+_BRIDGE_STATE = {
+    "last_poll_ts": 0.0,
+    "version": "",
+    "accounts": [],
+}
+
+
+def record_bridge_heartbeat(version: str = "", accounts: list[dict] | None = None):
+    _BRIDGE_STATE["last_poll_ts"] = time.time()
+    _BRIDGE_STATE["version"] = version or _BRIDGE_STATE["version"]
+    if accounts is not None:
+        _BRIDGE_STATE["accounts"] = accounts
+
+
+def get_bridge_status() -> dict:
+    last_ts = _BRIDGE_STATE["last_poll_ts"]
+    age = round(time.time() - last_ts, 1) if last_ts else None
+    online = bool(last_ts and age is not None and age <= 25.0)
+    return {
+        "online": online,
+        "last_seen_seconds": age,
+        "version": _BRIDGE_STATE["version"],
+        "live_accounts": _BRIDGE_STATE["accounts"],
+    }
+
+
+def is_bridge_online() -> bool:
+    return get_bridge_status()["online"]
+
+
+def install_addon_into_profile(custom_profile_dir: str | None = None) -> dict:
+    """Copy web/employmaxing-bridge.xpi straight into Thunderbird's profile extensions/ directory."""
+    from employmaxing.build_xpi import OUT_XPI, build_xpi
+
+    if not OUT_XPI.exists():
+        build_xpi()
+    disc = discover_thunderbird(custom_profile_dir)
+    if not disc["profiles"]:
+        return {
+            "installed": False,
+            "message": "No Thunderbird profile folder detected yet. Open Thunderbird once, sign in to your email, or install the downloaded .xpi via Thunderbird -> Add-ons and Themes -> Gear Icon -> Install Add-on From File.",
+            "xpi_path": str(OUT_XPI),
+        }
+
+    installed_paths = []
+    for p_str in disc["profiles"]:
+        ext_dir = Path(p_str) / "extensions"
+        ext_dir.mkdir(parents=True, exist_ok=True)
+        dest = ext_dir / f"{ADDON_ID}.xpi"
+        shutil.copy2(OUT_XPI, dest)
+        installed_paths.append(str(dest))
+
+    return {
+        "installed": True,
+        "paths": installed_paths,
+        "message": f"Copied Employmaxing Bridge into {len(installed_paths)} Thunderbird profile(s). Restart Thunderbird once and click 'Enable' if prompted!",
+    }
 
 
 def find_thunderbird_command() -> list[str] | None:
@@ -149,15 +210,34 @@ def discover_thunderbird(custom_profile_dir: str | None = None) -> dict:
     else:
         install_hint = "sudo dnf install thunderbird  (or: flatpak install flathub org.mozilla.Thunderbird)"
 
+    bridge = get_bridge_status()
+    # Merge any accounts reported live by the running Thunderbird Add-on (works inside Flatpak/Snap!)
+    known_emails = {a["email"].lower() for a in accounts}
+    for la in bridge["live_accounts"]:
+        em = (la.get("email") or "").strip()
+        if em and em.lower() not in known_emails:
+            known_emails.add(em.lower())
+            accounts.append({
+                "email": em,
+                "display_name": la.get("display_name", ""),
+                "hostname": "thunderbird-addon-live",
+                "mail_dir": "",
+                "profile_dir": str(profile_dirs[0]) if profile_dirs else "",
+            })
+
+    addon_in_profile = any((p / "extensions" / f"{ADDON_ID}.xpi").exists() for p in profile_dirs)
+
     return {
-        "installed": bool(cmd),
+        "installed": bool(cmd) or bridge["online"],
         "command": cmd or [],
         "profiles": [str(p) for p in profile_dirs],
         "accounts": accounts,
         "inbox_files": sorted(set(inbox_files)),
         "sent_files": sorted(set(sent_files)),
         "install_hint": install_hint,
-        "ready": bool(cmd and (accounts or inbox_files)),
+        "addon_installed_in_profile": addon_in_profile,
+        "bridge": bridge,
+        "ready": bool((cmd or bridge["online"]) and (accounts or inbox_files)),
     }
 
 

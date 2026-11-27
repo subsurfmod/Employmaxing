@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "name": "Employmaxing Auto-Send Bridge",
+  "version": "1.3.0",
+  "description": "Connects local Employmaxing (http://127.0.0.1:8787) to Thunderbird so approved plain-text job outreach sends automatically via your signed-in Gmail, Outlook, Yahoo, or Proton account.",
+  "author": "subsurfmod",
+  "homepage_url": "https://github.com/subsurfmod/Employmaxing",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "employmaxing-bridge@subsurfmod.github.io",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "accountsRead",
+    "alarms",
+    "compose",
+    "compose.send",
+    "storage",
+    "http://127.0.0.1:8787/*",
+    "http://localhost:8787/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "browser_action": {
+    "default_title": "Employmaxing Bridge",
+    "default_popup": "popup.html"
+  }
+}

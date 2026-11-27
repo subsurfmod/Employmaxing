@@ -47,9 +47,15 @@ from employmaxing.mail_oauth import (
     save_single_provider_config,
     start_oauth_flow,
 )
+from employmaxing.build_xpi import OUT_XPI, build_xpi
 from employmaxing.mailbox import queue_outbound_email, scan_inbox, send_approved_emails
 from employmaxing.store import EmploymaxingStore
-from employmaxing.thunderbird import discover_thunderbird
+from employmaxing.thunderbird import (
+    discover_thunderbird,
+    get_bridge_status,
+    install_addon_into_profile,
+    record_bridge_heartbeat,
+)
 from linkedin_audit import audit_linkedin_vs_resume, load_linkedin_data, render_markdown_report
 from optimizer import audit_job_posting, audit_resume, find_emails, generate_ats_dorks
 
@@ -261,6 +267,18 @@ def make_handler(store: EmploymaxingStore):
                 custom_p = qs.get("profile_dir", [None])[0]
                 return self._send_json(discover_thunderbird(custom_p))
 
+            if path == "/api/thunderbird/addon.xpi":
+                if not OUT_XPI.exists():
+                    build_xpi()
+                raw = OUT_XPI.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-xpinstall")
+                self.send_header("Content-Disposition", 'attachment; filename="employmaxing-bridge.xpi"')
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
             if path == "/api/mail-config":
                 info = get_public_mail_status(store)
                 info["thunderbird"] = discover_thunderbird(info.get("profile_dir") or None)
@@ -430,6 +448,48 @@ def make_handler(store: EmploymaxingStore):
                         display_name=data.get("display_name", ""),
                     )
                     return self._send_json(res)
+
+                if path == "/api/thunderbird/install-addon":
+                    return self._send_json(install_addon_into_profile((data.get("profile_dir") or "").strip() or None))
+
+                if path == "/api/thunderbird/bridge/poll":
+                    if self.headers.get("X-Employmaxing-Bridge") != "employmaxing-tb-v1":
+                        return self._send_json({"error": "Missing Employmaxing Bridge header"}, 403)
+                    record_bridge_heartbeat(version=data.get("version", ""), accounts=data.get("accounts"))
+                    cfg = get_public_mail_status(store)
+                    from_email = cfg.get("email", "")
+                    queued = store.list_emails(status="queued_for_bridge")
+                    out_jobs = []
+                    for e in queued[:5]:
+                        # Mark in-flight so it is never sent twice
+                        store.update_email(e["id"], status="sending_via_bridge")
+                        out_jobs.append({
+                            "id": e["id"],
+                            "from_email": from_email,
+                            "recipient_email": e["recipient_email"],
+                            "subject": e["subject"],
+                            "body": e["body"],
+                        })
+                    return self._send_json({"ok": True, "queue": out_jobs})
+
+                if path == "/api/thunderbird/bridge/ack":
+                    if self.headers.get("X-Employmaxing-Bridge") != "employmaxing-tb-v1":
+                        return self._send_json({"error": "Missing Employmaxing Bridge header"}, 403)
+                    eid = int(data["id"])
+                    if data.get("sent"):
+                        store.update_email(
+                            eid,
+                            direction="outbound_sent",
+                            status="sent",
+                            message_id=data.get("message_id", ""),
+                            sent_or_received_at=store._now(),
+                            error_msg="",
+                        )
+                        store.log_event("email_sent_thunderbird_auto", f"Thunderbird Auto-Send Bridge sent email #{eid} automatically (from {data.get('from_email', '')})")
+                    else:
+                        store.update_email(eid, status="failed", error_msg=str(data.get("error", "Unknown Thunderbird send error")))
+                        store.log_event("email_failed_thunderbird", f"Thunderbird Bridge failed sending email #{eid}: {data.get('error', '')}")
+                    return self._send_json({"ok": True, "id": eid})
 
                 if path == "/api/thunderbird/connect":
                     custom_p = (data.get("profile_dir") or "").strip() or None

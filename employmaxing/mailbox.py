@@ -43,6 +43,7 @@ from employmaxing.mail_oauth import (
 from employmaxing.store import EmploymaxingStore
 from employmaxing.thunderbird import (
     discover_thunderbird,
+    is_bridge_online,
     open_thunderbird_compose,
     read_recent_mbox_messages,
 )
@@ -595,16 +596,29 @@ def send_approved_emails(store: EmploymaxingStore, email_id: int | None = None, 
     for idx, e in enumerate(batch):
         try:
             if provider == "thunderbird":
-                open_thunderbird_compose(e["recipient_email"], e["subject"], e["body"], custom_cmd=cfg.get("command") or None)
-                store.update_email(
-                    e["id"],
-                    direction="outbound_approved",
-                    status="opened_in_thunderbird",
-                    sent_or_received_at=store._now(),
-                    error_msg="",
-                )
-                store.log_event("email_opened_thunderbird", f"Opened pre-filled plain-text draft #{e['id']} in Thunderbird for {e['recipient_email']} (press Ctrl+Enter in Thunderbird to send)")
-                results.append({"id": e["id"], "to": e["recipient_email"], "subject": e["subject"], "opened_in_thunderbird": True})
+                if is_bridge_online():
+                    # 100% hands-free auto-send via live Thunderbird Companion Add-on!
+                    store.update_email(
+                        e["id"],
+                        direction="outbound_approved",
+                        status="queued_for_bridge",
+                        sent_or_received_at=store._now(),
+                        error_msg="",
+                    )
+                    store.log_event("email_queued_bridge", f"Dispatched email #{e['id']} to live Thunderbird Auto-Send Bridge for {e['recipient_email']}")
+                    results.append({"id": e["id"], "to": e["recipient_email"], "subject": e["subject"], "queued_for_bridge": True, "hands_free": True})
+                else:
+                    # Graceful fallback: open pre-filled plain-text draft in Thunderbird
+                    open_thunderbird_compose(e["recipient_email"], e["subject"], e["body"], custom_cmd=cfg.get("command") or None)
+                    store.update_email(
+                        e["id"],
+                        direction="outbound_approved",
+                        status="opened_in_thunderbird",
+                        sent_or_received_at=store._now(),
+                        error_msg="",
+                    )
+                    store.log_event("email_opened_thunderbird", f"Opened pre-filled plain-text draft #{e['id']} in Thunderbird for {e['recipient_email']} (install the Employmaxing Bridge add-on for 100% hands-free sending)")
+                    results.append({"id": e["id"], "to": e["recipient_email"], "subject": e["subject"], "opened_in_thunderbird": True, "hands_free": False})
                 continue
 
             if provider == "google":

@@ -262,40 +262,64 @@ function renderSingleProviderHTML(prefix) {
 
   if (sel === 'thunderbird') {
     const accounts = tb.accounts || [];
-    const statusTag = tb.ready
-      ? `<span class="tag tag-lime">DETECTED (${accounts.length} ACCOUNT${accounts.length === 1 ? '' : 'S'})</span>`
-      : (tb.installed ? `<span class="tag tag-yellow">INSTALLED — SIGN IN INSIDE THUNDERBIRD</span>` : `<span class="tag tag-coral">NOT INSTALLED YET</span>`);
+    const bridge = tb.bridge || {};
+    const bridgeOnline = !!bridge.online;
+    const bridgeBadge = bridgeOnline
+      ? `<span class="tag tag-lime">AUTO-SEND BRIDGE: ONLINE &#9679; (100% HANDS-FREE)</span>`
+      : (tb.addon_installed_in_profile
+          ? `<span class="tag tag-yellow">ADD-ON COPIED — RESTART THUNDERBIRD TO ACTIVATE</span>`
+          : `<span class="tag tag-yellow">ADD-ON OPTIONAL (ENABLES 100% HANDS-FREE SEND)</span>`);
 
     const accountPicker = accounts.length
       ? `
         <div style="margin-bottom:12px;">
-          <label class="field-label">Pick Your Signed-In Thunderbird Account (1 Active Account)</label>
+          <label class="field-label">Step 3: Pick Your Signed-In Thunderbird Account (1 Active Account)</label>
           <select id="${prefix}-tb-account">
             ${accounts.map(a => `<option value="${esc(a.email)}" ${cfg.email === a.email ? 'selected' : ''}>${esc(a.email)} ${a.hostname ? `(${esc(a.hostname)})` : ''}</option>`).join('')}
           </select>
         </div>
       `
       : `
-        <div style="border:2px solid #111;background:#FFF4B8;padding:12px;margin-bottom:12px;" class="mono">
-          <strong>2-STEP ZERO-API SETUP:</strong><br/>
-          1. ${tb.installed ? 'Open <strong>Mozilla Thunderbird</strong> and add your Gmail / Outlook / Yahoo account (1-click 2FA popup built in!).' : `Install Mozilla Thunderbird: <code>${esc(tb.install_hint || 'sudo dnf install thunderbird')}</code> <button type="button" class="btn btn-sm btn-yellow" onclick="copyText(${JSON.stringify(tb.install_hint || 'sudo dnf install thunderbird')})">Copy</button>`}<br/>
-          2. Sign in to your mail inside Thunderbird, then click <strong>Re-Scan &amp; Connect Thunderbird</strong> below!
+        <div style="border:2px solid #111;background:#FFF4B8;padding:10px 12px;margin-bottom:12px;" class="mono">
+          <strong>Step 1:</strong> ${tb.installed ? 'Open <strong>Mozilla Thunderbird</strong> and sign in to your Gmail / Outlook / Yahoo / Proton account once (official 2FA login popups built in!).' : `Install Mozilla Thunderbird: <code>${esc(tb.install_hint || 'sudo dnf install thunderbird')}</code> <button type="button" class="btn btn-sm btn-yellow" onclick="copyText(${JSON.stringify(tb.install_hint || 'sudo dnf install thunderbird')})">Copy</button>`}
         </div>
       `;
 
     html += `
       <div style="border:2px solid #111;padding:18px;background:#FFFDF8;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
-          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Mozilla Thunderbird Bridge (Zero Client IDs / Zero Passwords)</div>
-          ${statusTag}
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Mozilla Thunderbird (Zero API Keys / Zero Passwords)</div>
+          ${bridgeBadge}
         </div>
         <p class="mono" style="margin-bottom:14px;color:#444;">
-          Thunderbird handles official Google/Microsoft/Yahoo 2FA login for you. Employmaxing reads your local synced inbox in &lt;0.2s for interview replies and opens pre-filled plain-text drafts directly in Thunderbird!
+          Sign in to Gmail, Outlook, Yahoo, or Proton inside Thunderbird once. Employmaxing automatically reads your inbox replies in &lt;0.2s and — with the tiny 1-file Bridge Add-on below — sends approved emails <strong>100% automatically in the background</strong>!
         </p>
+
         ${accountPicker}
+
+        <div style="border:2px solid #111;background:${bridgeOnline ? '#ECFFB3' : '#F4EFE6'};padding:14px;margin-bottom:14px;">
+          <div style="font-weight:900;text-transform:uppercase;font-size:0.86rem;margin-bottom:6px;">
+            ${bridgeOnline ? '✓ Step 2 Complete: Auto-Send Bridge Add-on Is Live!' : 'Step 2 (15 Seconds): Enable 100% Hands-Free Auto-Send Add-on'}
+          </div>
+          ${bridgeOnline ? `
+            <div class="mono" style="font-size:0.78rem;">
+              Thunderbird Companion Add-on v${esc(bridge.version || '1.3.0')} is actively synced (last heartbeat ${esc(bridge.last_seen_seconds ?? 0)}s ago). Clicking <strong>Send Approved Mail</strong> will now send automatically with zero extra clicks!
+            </div>
+          ` : `
+            <div class="mono" style="font-size:0.77rem;line-height:1.55;margin-bottom:10px;">
+              <strong>Option A (Fastest — 1 Click):</strong> Click <strong>Install Add-on Into Thunderbird</strong> below, restart Thunderbird once, and click <strong>Enable</strong>.<br/>
+              <strong>Option B (Manual Drag &amp; Drop):</strong> Click <strong>Download .xpi</strong> &rarr; open Thunderbird &rarr; <strong>&#9776; Menu &rarr; Add-ons and Themes &rarr; &#9881; Gear Icon &rarr; Install Add-on From File...</strong> &rarr; pick <code>employmaxing-bridge.xpi</code>.
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-sm btn-black" onclick="installThunderbirdAddon()">1-Click Install Into Thunderbird</button>
+              <a class="btn btn-sm btn-yellow" href="/api/thunderbird/addon.xpi" download="employmaxing-bridge.xpi">Download employmaxing-bridge.xpi</a>
+            </div>
+          `}
+        </div>
+
         <div class="btn-row">
           <button type="button" class="btn btn-lime" onclick="connectThunderbird('${prefix}')">Auto-Detect &amp; Connect Thunderbird</button>
-          <button type="button" class="btn" onclick="refreshAll()">Re-Scan Thunderbird</button>
+          <button type="button" class="btn" onclick="refreshAll()">Re-Scan Status</button>
         </div>
       </div>
     `;
@@ -567,6 +591,14 @@ async function saveDirectProvider(provider, prefix) {
   } catch (e) {
     toast(`Mail setup error: ${e.message}`);
   }
+}
+
+async function installThunderbirdAddon() {
+  try {
+    const res = await api('/api/thunderbird/install-addon', { method: 'POST', body: '{}' });
+    toast(res.message || 'Add-on installed!');
+    refreshAll();
+  } catch (e) { toast(e.message); }
 }
 
 async function connectThunderbird(prefix) {
@@ -1204,3 +1236,21 @@ function renderForms() {
 }
 
 refreshAll();
+
+// Live-detect Thunderbird Auto-Send Bridge coming ONLINE while user is on Step 3 of Setup
+setInterval(async () => {
+  const onStep3 = document.getElementById('view-onboarding')?.classList.contains('active')
+    && document.getElementById('wizard-step-3')?.classList.contains('active');
+  const onMail = document.getElementById('view-mailbox')?.classList.contains('active');
+  if (!onStep3 && !onMail) return;
+  try {
+    const mc = await api('/api/mail-config');
+    const prevOnline = !!(STATE.mailCfg && STATE.mailCfg.thunderbird && STATE.mailCfg.thunderbird.bridge && STATE.mailCfg.thunderbird.bridge.online);
+    const nowOnline = !!(mc.thunderbird && mc.thunderbird.bridge && mc.thunderbird.bridge.online);
+    if (nowOnline !== prevOnline) {
+      STATE.mailCfg = mc;
+      renderSingleProviderWidgets();
+      if (nowOnline) toast('Thunderbird Auto-Send Bridge is now ONLINE (100% hands-free)!');
+    }
+  } catch (_) {}
+}, 6000);

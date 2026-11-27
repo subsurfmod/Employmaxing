@@ -1,7 +1,7 @@
 # EMPLOYMAXING
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.2.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.2.0)
+[![Release](https://img.shields.io/badge/Release-v1.3.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.3.0)
 [![Agent Skill](https://img.shields.io/badge/Agent_Skill-Antigravity_%7C_Claude_Code-FFE135?labelColor=111111)](./SKILL.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4D8BFF?labelColor=111111)](https://www.python.org/)
 [![Local First](https://img.shields.io/badge/Privacy-100%25_Local_First-111111)](./employmaxing/server.py)
