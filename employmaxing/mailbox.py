@@ -41,6 +41,11 @@ from employmaxing.mail_oauth import (
     save_single_provider_config,
 )
 from employmaxing.store import EmploymaxingStore
+from employmaxing.thunderbird import (
+    discover_thunderbird,
+    open_thunderbird_compose,
+    read_recent_mbox_messages,
+)
 from optimizer import audit_mail, check_mx_records
 
 
@@ -312,6 +317,63 @@ def _scan_imap_provider(store: EmploymaxingStore, cfg: dict, days: int, limit: i
     return found
 
 
+def _scan_thunderbird_mbox(store: EmploymaxingStore, cfg: dict, days: int, limit: int, ctx_sets: tuple) -> tuple[list[dict], int]:
+    """
+    Read Thunderbird's local INBOX mbox files for replies AND check Sent mbox files to
+    auto-confirm emails that the user clicked Send on in Thunderbird!
+    """
+    disc = discover_thunderbird(cfg.get("profile_dir") or None)
+    inbox_paths = [Path(p) for p in (cfg.get("inbox_files") or disc.get("inbox_files") or [])]
+    sent_paths = [Path(p) for p in (cfg.get("sent_files") or disc.get("sent_files") or [])]
+
+    # Restrict to the chosen account's mail_dir when available
+    mail_dir = (cfg.get("mail_dir") or "").strip()
+    if mail_dir:
+        filtered_in = [p for p in inbox_paths if str(p).startswith(mail_dir)]
+        filtered_sent = [p for p in sent_paths if str(p).startswith(mail_dir)]
+        if filtered_in:
+            inbox_paths = filtered_in
+        if filtered_sent:
+            sent_paths = filtered_sent
+
+    sent_domains, sent_msg_ids, company_tokens = ctx_sets
+    my_email = cfg.get("email", "")
+    found = []
+
+    for mbox_p in inbox_paths:
+        for m in read_recent_mbox_messages(mbox_p, days=days, limit=limit):
+            rec = _ingest_classified_message(
+                store, my_email, m["from"], m["subject"], m["body"], m["message_id"], m["in_reply_to"],
+                sent_domains, sent_msg_ids, company_tokens,
+            )
+            if rec:
+                found.append(rec)
+
+    # Auto-confirm any emails previously handed to Thunderbird compose that now appear in Sent mbox!
+    confirmed_sent = 0
+    pending_tb = store.list_emails(status="opened_in_thunderbird")
+    if pending_tb and sent_paths:
+        sent_recent = []
+        for sp in sent_paths:
+            sent_recent.extend(read_recent_mbox_messages(sp, days=max(days, 7), limit=100))
+        for pe in pending_tb:
+            pe_to = (pe.get("recipient_email") or "").lower()
+            pe_subj = (pe.get("subject") or "").strip().lower()
+            for sm in sent_recent:
+                if pe_to and pe_to in (sm.get("to") or "").lower() and pe_subj == (sm.get("subject") or "").strip().lower():
+                    store.update_email(
+                        pe["id"],
+                        direction="outbound_sent",
+                        status="sent",
+                        message_id=sm.get("message_id") or pe.get("message_id", ""),
+                        sent_or_received_at=store._now(),
+                    )
+                    store.log_event("email_sent_confirmed", f"Auto-confirmed Thunderbird sent email #{pe['id']} to {pe['recipient_email']}")
+                    confirmed_sent += 1
+                    break
+    return found, confirmed_sent
+
+
 def scan_inbox(store: EmploymaxingStore, days: int = 14, limit: int = 50) -> dict:
     """Scan the single active mail provider for recruiter/HM replies and update Jobs pipeline."""
     cfg = load_active_mail_config(store)
@@ -319,7 +381,7 @@ def scan_inbox(store: EmploymaxingStore, days: int = 14, limit: int = 50) -> dic
     if not provider:
         return {
             "status": "not_configured",
-            "message": "No mail provider connected yet. Complete Step 3 of Get Started or connect Google/Microsoft/Yahoo/Proton/Custom API in Mailbox.",
+            "message": "No mail provider connected yet. Connect Thunderbird (easiest!) or Google/Microsoft/Yahoo/Proton/Custom API in 00 // Get Started.",
             "new_replies": [],
         }
 
@@ -330,7 +392,10 @@ def scan_inbox(store: EmploymaxingStore, days: int = 14, limit: int = 50) -> dic
     company_tokens = {re.sub(r'[^a-z0-9]', '', j["company"].lower()): j for j in known_jobs if j.get("company")}
     ctx_sets = (sent_domains, sent_msg_ids, company_tokens)
 
-    if provider == "google":
+    confirmed_sent = 0
+    if provider == "thunderbird":
+        new_replies, confirmed_sent = _scan_thunderbird_mbox(store, cfg, days, limit, ctx_sets)
+    elif provider == "google":
         new_replies = _scan_gmail_api(store, days, limit, ctx_sets)
     elif provider == "microsoft":
         new_replies = _scan_microsoft_graph(store, days, limit, ctx_sets)
@@ -339,8 +404,8 @@ def scan_inbox(store: EmploymaxingStore, days: int = 14, limit: int = 50) -> dic
     else:
         new_replies = _scan_imap_provider(store, cfg, days, limit, ctx_sets)
 
-    store.log_event("inbox_scanned", f"Scanned {provider.upper()} inbox ({days}d): found {len(new_replies)} job reply(s)", {"provider": provider, "count": len(new_replies)})
-    return {"status": "ok", "provider": provider, "scanned_days": days, "new_replies": new_replies}
+    store.log_event("inbox_scanned", f"Scanned {provider.upper()} inbox ({days}d): {len(new_replies)} reply(s), {confirmed_sent} sent confirmed", {"provider": provider, "count": len(new_replies), "confirmed_sent": confirmed_sent})
+    return {"status": "ok", "provider": provider, "scanned_days": days, "new_replies": new_replies, "confirmed_sent": confirmed_sent}
 
 
 def queue_outbound_email(
@@ -529,6 +594,19 @@ def send_approved_emails(store: EmploymaxingStore, email_id: int | None = None, 
     results = []
     for idx, e in enumerate(batch):
         try:
+            if provider == "thunderbird":
+                open_thunderbird_compose(e["recipient_email"], e["subject"], e["body"], custom_cmd=cfg.get("command") or None)
+                store.update_email(
+                    e["id"],
+                    direction="outbound_approved",
+                    status="opened_in_thunderbird",
+                    sent_or_received_at=store._now(),
+                    error_msg="",
+                )
+                store.log_event("email_opened_thunderbird", f"Opened pre-filled plain-text draft #{e['id']} in Thunderbird for {e['recipient_email']} (press Ctrl+Enter in Thunderbird to send)")
+                results.append({"id": e["id"], "to": e["recipient_email"], "subject": e["subject"], "opened_in_thunderbird": True})
+                continue
+
             if provider == "google":
                 msg_id = _send_one_gmail(store, cfg, e)
             elif provider == "microsoft":

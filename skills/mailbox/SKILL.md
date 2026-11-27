@@ -10,11 +10,12 @@ Close the loop on outreach and applications cleanly through **EXACTLY ONE active
 
 ## Supported Single Providers (Choose One in `00 // Get Started` or `05 // Mailbox & Sent`)
 
-1. **Google (Gmail)** — **Sign in with Google** (OAuth 2.0 + PKCE `S256` → official **Gmail REST API** for inbox reply scanning & plain-text sending).
-2. **Microsoft (Outlook / M365)** — **Sign in with Microsoft** (OAuth 2.0 + PKCE `S256`, no client secret required → official **Microsoft Graph API**).
-3. **Yahoo Mail** — Yahoo OAuth 2.0 (`XOAUTH2`) or Yahoo 2FA App Password.
-4. **Proton Mail** — **Proton Mail Bridge** local loopback TLS (`127.0.0.1:1143` / `1025`, 2FA native).
-5. **Custom Mail API** — Custom HTTP REST API (presets for **Resend**, **Postmark**, or custom send/inbox JSON endpoints with Bearer/Header API key).
+1. **Mozilla Thunderbird ★ (Recommended — Easiest, Zero API Setup)**: Sign in to Gmail, Outlook, Yahoo, or Proton inside Thunderbird once (official Google/Microsoft 2FA popups built in!). Click **Auto-Detect & Connect Thunderbird** — Employmaxing reads Thunderbird's local `INBOX` & `Sent` mbox files in `<150ms` (zero passwords!) to detect interview replies & confirm sent mail, and opens pre-filled plain-text drafts via `thunderbird -compose`.
+2. **Google (Gmail)** — **Sign in with Google** (OAuth 2.0 + PKCE `S256` → official **Gmail REST API**).
+3. **Microsoft (Outlook / M365)** — **Sign in with Microsoft** (OAuth 2.0 + PKCE `S256`, no client secret required → official **Microsoft Graph API**).
+4. **Yahoo Mail** — Yahoo OAuth 2.0 (`XOAUTH2`) or Yahoo 2FA App Password.
+5. **Proton Mail** — **Proton Mail Bridge** local loopback TLS (`127.0.0.1:1143` / `1025`, 2FA native).
+6. **Custom Mail API** — Custom HTTP REST API (presets for **Resend**, **Postmark**, or custom JSON endpoints).
 
 ## Capabilities
 

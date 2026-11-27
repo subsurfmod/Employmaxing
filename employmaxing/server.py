@@ -49,6 +49,7 @@ from employmaxing.mail_oauth import (
 )
 from employmaxing.mailbox import queue_outbound_email, scan_inbox, send_approved_emails
 from employmaxing.store import EmploymaxingStore
+from employmaxing.thunderbird import discover_thunderbird
 from linkedin_audit import audit_linkedin_vs_resume, load_linkedin_data, render_markdown_report
 from optimizer import audit_job_posting, audit_resume, find_emails, generate_ats_dorks
 
@@ -256,8 +257,13 @@ def make_handler(store: EmploymaxingStore):
                 status = qs.get("status", [None])[0]
                 return self._send_json({"emails": store.list_emails(direction=direction, status=status)})
 
+            if path == "/api/thunderbird/discover":
+                custom_p = qs.get("profile_dir", [None])[0]
+                return self._send_json(discover_thunderbird(custom_p))
+
             if path == "/api/mail-config":
                 info = get_public_mail_status(store)
+                info["thunderbird"] = discover_thunderbird(info.get("profile_dir") or None)
                 info["redirect_uris"] = {
                     "google": f"{self._base_url()}/api/oauth/google/callback",
                     "microsoft": f"{self._base_url()}/api/oauth/microsoft/callback",
@@ -425,6 +431,29 @@ def make_handler(store: EmploymaxingStore):
                     )
                     return self._send_json(res)
 
+                if path == "/api/thunderbird/connect":
+                    custom_p = (data.get("profile_dir") or "").strip() or None
+                    disc = discover_thunderbird(custom_p)
+                    selected_email = (data.get("email") or "").strip()
+                    chosen_acc = next((a for a in disc["accounts"] if a["email"].lower() == selected_email.lower()), None) if selected_email else (disc["accounts"][0] if disc["accounts"] else None)
+                    email_addr = selected_email or (chosen_acc["email"] if chosen_acc else "")
+                    saved = save_single_provider_config(
+                        store,
+                        "thunderbird",
+                        {
+                            "auth_mode": "thunderbird_local",
+                            "email": email_addr,
+                            "display_name": (chosen_acc["display_name"] if chosen_acc else data.get("display_name", "")),
+                            "profile_dir": (chosen_acc["profile_dir"] if chosen_acc else (disc["profiles"][0] if disc["profiles"] else (custom_p or ""))),
+                            "mail_dir": chosen_acc["mail_dir"] if chosen_acc else "",
+                            "inbox_files": disc["inbox_files"],
+                            "sent_files": disc["sent_files"],
+                            "command": disc["command"],
+                            "connected": True,
+                        },
+                    )
+                    return self._send_json({"status": "connected", "provider": "thunderbird", "email": saved["email"], "thunderbird": disc})
+
                 if path == "/api/mail-config":
                     provider = (data.get("provider") or "").lower().strip()
                     saved = save_single_provider_config(store, provider, {**data, "connected": True})
@@ -548,6 +577,14 @@ def make_handler(store: EmploymaxingStore):
                 if m_eapp:
                     eid = int(m_eapp.group(1))
                     ok = store.update_email(eid, status="approved", direction="outbound_approved")
+                    return self._send_json({"updated": ok, "id": eid})
+
+                m_esent = re.match(r'^/api/emails/(\d+)/mark-sent$', path)
+                if m_esent:
+                    eid = int(m_esent.group(1))
+                    ok = store.update_email(eid, status="sent", direction="outbound_sent", sent_or_received_at=store._now())
+                    if ok:
+                        store.log_event("email_marked_sent", f"User confirmed email #{eid} sent via Thunderbird")
                     return self._send_json({"updated": ok, "id": eid})
 
                 if path == "/api/emails/send":

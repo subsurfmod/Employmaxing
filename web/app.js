@@ -2,7 +2,7 @@
 let STATE = {
   onboarding: null,
   mailCfg: null,
-  selectedProvider: 'google',
+  selectedProvider: 'thunderbird',
   wizardFiles: { resume: null, linkedin: null },
   initialRouted: false,
   dashboard: null,
@@ -213,11 +213,12 @@ async function wizardSaveStep2() {
 /* ==================== SINGLE-PROVIDER MAIL CONNECTOR (OAUTH2 + CUSTOM API) ==================== */
 
 const MAIL_PROVIDERS = [
-  { id: 'google', name: 'Google', sub: 'Sign in w/ Google (OAuth2 + 2FA)' },
-  { id: 'microsoft', name: 'Microsoft', sub: 'Sign in w/ Microsoft (OAuth2 + 2FA)' },
-  { id: 'yahoo', name: 'Yahoo', sub: 'Yahoo OAuth2 or 2FA App Pass' },
-  { id: 'proton', name: 'Proton', sub: 'Proton Mail Bridge (2FA Native)' },
-  { id: 'custom_api', name: 'Custom API', sub: 'Resend / Postmark / REST API' },
+  { id: 'thunderbird', name: 'Thunderbird ★', sub: 'Easiest! Zero API Setup (Gmail/Outlook 2FA)' },
+  { id: 'google', name: 'Google', sub: 'Gmail API OAuth2' },
+  { id: 'microsoft', name: 'Microsoft', sub: 'Outlook Graph OAuth2' },
+  { id: 'yahoo', name: 'Yahoo', sub: 'Yahoo OAuth2 / 2FA' },
+  { id: 'proton', name: 'Proton', sub: 'Proton Mail Bridge' },
+  { id: 'custom_api', name: 'Custom API', sub: 'Resend / Postmark / REST' },
 ];
 
 function selectMailProvider(pid) {
@@ -228,8 +229,9 @@ function selectMailProvider(pid) {
 function renderSingleProviderHTML(prefix) {
   const cfg = STATE.mailCfg || {};
   const activeProv = cfg.configured ? cfg.provider : null;
-  const sel = STATE.selectedProvider || activeProv || 'google';
+  const sel = STATE.selectedProvider || activeProv || 'thunderbird';
   const redir = (cfg.redirect_uris || {});
+  const tb = cfg.thunderbird || {};
 
   let html = '';
   if (activeProv) {
@@ -242,7 +244,7 @@ function renderSingleProviderHTML(prefix) {
   } else {
     html += `
       <div style="margin-bottom:10px;font-family:var(--font-mono);font-size:0.78rem;font-weight:700;">
-        Choose <strong>ONE</strong> mail provider below. Connecting a new provider replaces any prior connection.
+        Choose <strong>ONE</strong> mail provider below. <strong>Thunderbird</strong> is the simplest — sign into Gmail, Outlook, Yahoo, or Proton inside Thunderbird once, then click Connect below!
       </div>
     `;
   }
@@ -258,7 +260,46 @@ function renderSingleProviderHTML(prefix) {
 
   const readyMap = cfg.oauth_ready || {};
 
-  if (sel === 'google') {
+  if (sel === 'thunderbird') {
+    const accounts = tb.accounts || [];
+    const statusTag = tb.ready
+      ? `<span class="tag tag-lime">DETECTED (${accounts.length} ACCOUNT${accounts.length === 1 ? '' : 'S'})</span>`
+      : (tb.installed ? `<span class="tag tag-yellow">INSTALLED — SIGN IN INSIDE THUNDERBIRD</span>` : `<span class="tag tag-coral">NOT INSTALLED YET</span>`);
+
+    const accountPicker = accounts.length
+      ? `
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Pick Your Signed-In Thunderbird Account (1 Active Account)</label>
+          <select id="${prefix}-tb-account">
+            ${accounts.map(a => `<option value="${esc(a.email)}" ${cfg.email === a.email ? 'selected' : ''}>${esc(a.email)} ${a.hostname ? `(${esc(a.hostname)})` : ''}</option>`).join('')}
+          </select>
+        </div>
+      `
+      : `
+        <div style="border:2px solid #111;background:#FFF4B8;padding:12px;margin-bottom:12px;" class="mono">
+          <strong>2-STEP ZERO-API SETUP:</strong><br/>
+          1. ${tb.installed ? 'Open <strong>Mozilla Thunderbird</strong> and add your Gmail / Outlook / Yahoo account (1-click 2FA popup built in!).' : `Install Mozilla Thunderbird: <code>${esc(tb.install_hint || 'sudo dnf install thunderbird')}</code> <button type="button" class="btn btn-sm btn-yellow" onclick="copyText(${JSON.stringify(tb.install_hint || 'sudo dnf install thunderbird')})">Copy</button>`}<br/>
+          2. Sign in to your mail inside Thunderbird, then click <strong>Re-Scan &amp; Connect Thunderbird</strong> below!
+        </div>
+      `;
+
+    html += `
+      <div style="border:2px solid #111;padding:18px;background:#FFFDF8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="font-weight:900;font-size:1.05rem;text-transform:uppercase;">Mozilla Thunderbird Bridge (Zero Client IDs / Zero Passwords)</div>
+          ${statusTag}
+        </div>
+        <p class="mono" style="margin-bottom:14px;color:#444;">
+          Thunderbird handles official Google/Microsoft/Yahoo 2FA login for you. Employmaxing reads your local synced inbox in &lt;0.2s for interview replies and opens pre-filled plain-text drafts directly in Thunderbird!
+        </p>
+        ${accountPicker}
+        <div class="btn-row">
+          <button type="button" class="btn btn-lime" onclick="connectThunderbird('${prefix}')">Auto-Detect &amp; Connect Thunderbird</button>
+          <button type="button" class="btn" onclick="refreshAll()">Re-Scan Thunderbird</button>
+        </div>
+      </div>
+    `;
+  } else if (sel === 'google') {
     const uri = redir.google || `${location.origin}/api/oauth/google/callback`;
     const isReady = !!readyMap.google;
     html += `
@@ -526,6 +567,28 @@ async function saveDirectProvider(provider, prefix) {
   } catch (e) {
     toast(`Mail setup error: ${e.message}`);
   }
+}
+
+async function connectThunderbird(prefix) {
+  try {
+    const accEl = document.getElementById(`${prefix}-tb-account`);
+    const email = accEl ? accEl.value : '';
+    const res = await api('/api/thunderbird/connect', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    const info = res.thunderbird || {};
+    toast(`Connected Thunderbird (${res.email || 'local profile'}) — ${info.inbox_files ? info.inbox_files.length : 0} inbox file(s) synced!`);
+    refreshAll();
+  } catch (e) { toast(e.message); }
+}
+
+async function markEmailSent(id) {
+  try {
+    await api(`/api/emails/${id}/mark-sent`, { method: 'POST', body: '{}' });
+    toast(`Confirmed email #${id} as SENT!`);
+    refreshAll();
+  } catch (e) { toast(e.message); }
 }
 
 async function disconnectProvider() {
@@ -1077,6 +1140,7 @@ function renderEmails() {
         <td>
           <span class="tag">${esc(e.status)}</span>
           ${e.status === 'pending_approval' ? `<div style="margin-top:6px;"><button class="btn btn-sm btn-lime" onclick="approveEmail(${e.id})">Approve</button></div>` : ''}
+          ${e.status === 'opened_in_thunderbird' ? `<div style="margin-top:6px;"><button class="btn btn-sm btn-lime" onclick="markEmailSent(${e.id})">Mark Sent</button></div>` : ''}
         </td>
       </tr>
     `;

@@ -1,12 +1,12 @@
 # EMPLOYMAXING
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.1.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.1.0)
+[![Release](https://img.shields.io/badge/Release-v1.2.0-C8FF2E?labelColor=111111)](https://github.com/subsurfmod/Employmaxing/releases/tag/v1.2.0)
 [![Agent Skill](https://img.shields.io/badge/Agent_Skill-Antigravity_%7C_Claude_Code-FFE135?labelColor=111111)](./SKILL.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-4D8BFF?labelColor=111111)](https://www.python.org/)
 [![Local First](https://img.shields.io/badge/Privacy-100%25_Local_First-111111)](./employmaxing/server.py)
 
-> **Empirical Interview-Maximization & Transparent Career Automation Agent Skill** — Launch once (`./bin/employmaxing serve`) to auto-open a Neo-Brutalist High-Contrast Local Web App with a **Zero-CLI First-Time Setup Wizard** (drag-and-drop resume upload + auto-extraction), **2FA-Safe Single-Provider OAuth2 Mail** (Sign in with Google / Sign in with Microsoft / Yahoo / Proton Bridge / Custom REST API), **12-Point LinkedIn Discrepancy Auditor**, and **Complex ATS Chrome CDP Form Filling**.
+> **Empirical Interview-Maximization & Transparent Career Automation Agent Skill** — Launch once (`./bin/employmaxing serve`) to auto-open a Neo-Brutalist High-Contrast Local Web App with a **Zero-CLI First-Time Setup Wizard** (drag-and-drop resume upload + auto-extraction), **1-Click Mozilla Thunderbird Bridge** (zero OAuth Client IDs, zero App Passwords — handles Gmail/Outlook/Yahoo/Proton 2FA natively + fast local mbox reply scanning & pre-filled plain-text compose, plus direct Google/Microsoft OAuth2 & Custom REST API), **12-Point LinkedIn Discrepancy Auditor**, and **Complex ATS Chrome CDP Form Filling**.
 >
 > **Works seamlessly with:** Antigravity, Claude Code, Claude Cowork, Standalone CLI (`employmaxing`), and any Browser (`http://127.0.0.1:8787`). | **License:** [GNU General Public License v3.0](./LICENSE)
 
@@ -17,8 +17,8 @@
 ### Zero-CLI First-Time Setup Wizard (Drop Resume & Auto-Pull Info)
 ![Employmaxing First-Time Get Started Wizard](docs/images/00-get-started.png)
 
-### 2FA-Safe Single-Provider Mail OAuth2 (Google / Microsoft / Yahoo / Proton / Custom API)
-![Employmaxing Single Provider OAuth2 Mail Setup](docs/images/00-mail-oauth.png)
+### 1-Click Single-Provider Mail Setup (Thunderbird ★ / Google / Microsoft / Yahoo / Proton / Custom API)
+![Employmaxing Single Provider Mail Setup](docs/images/00-mail-oauth.png)
 
 ### Command Overview & Live Audit Trail
 ![Employmaxing Command Overview](docs/images/01-overview.png)

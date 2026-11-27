@@ -25,7 +25,7 @@ import requests
 
 from employmaxing.store import EmploymaxingStore
 
-ALLOWED_PROVIDERS = ("google", "microsoft", "yahoo", "proton", "custom_api")
+ALLOWED_PROVIDERS = ("thunderbird", "google", "microsoft", "yahoo", "proton", "custom_api")
 
 OAUTH_SPECS = {
     "google": {
@@ -172,6 +172,7 @@ def save_single_provider_config(store: EmploymaxingStore, provider: str, setting
 
     # Copy only fields relevant to the chosen single provider
     allowed_fields = {
+        "thunderbird": ("profile_dir", "mail_dir", "inbox_files", "sent_files", "command"),
         "google": ("client_id", "client_secret", "access_token", "refresh_token", "expires_at"),
         "microsoft": ("client_id", "client_secret", "access_token", "refresh_token", "expires_at", "tenant"),
         "yahoo": ("client_id", "client_secret", "access_token", "refresh_token", "expires_at", "password", "imap_host", "imap_port", "smtp_host", "smtp_port"),
@@ -182,7 +183,9 @@ def save_single_provider_config(store: EmploymaxingStore, provider: str, setting
         if k in settings and settings[k] is not None:
             clean_cfg[k] = settings[k]
 
-    if provider == "proton":
+    if provider == "thunderbird":
+        clean_cfg["auth_mode"] = "thunderbird_local"
+    elif provider == "proton":
         clean_cfg.setdefault("auth_mode", "proton_bridge")
         clean_cfg.setdefault("imap_host", "127.0.0.1")
         clean_cfg.setdefault("imap_port", 1143)
