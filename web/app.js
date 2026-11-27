@@ -1,4 +1,4 @@
-/* Employmaxing v1.1 — Zero-CLI Onboarding + Single-Provider OAuth2 Mail Controller (GPL-3.0) */
+/* Employmaxing v1.5 — Guided Zero-CLI Onboarding + Universal Autofill + Single-Provider Mail Controller (GPL-3.0) */
 let STATE = {
   onboarding: null,
   mailCfg: null,
@@ -13,6 +13,9 @@ let STATE = {
   emails: [],
   emailFilter: 'all',
   forms: [],
+  browserCdpAvailable: false,
+  detectedBrowser: '',
+  formResults: {},
 };
 
 function toast(msg) {
@@ -20,7 +23,7 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 4500);
 }
 
 function esc(str) {
@@ -29,6 +32,23 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function safeUrl(u) {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s) || s.startsWith('/')) return s;
+  return 'https://' + s;
+}
+
+function setInlineResult(elId, kind, html) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!html) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `<div class="inline-result ${kind}">${html}</div>`;
 }
 
 function fileToBase64(file) {
@@ -299,20 +319,25 @@ function renderSingleProviderHTML(prefix) {
 
         <div style="border:2px solid #111;background:${bridgeOnline ? '#ECFFB3' : '#F4EFE6'};padding:14px;margin-bottom:14px;">
           <div style="font-weight:900;text-transform:uppercase;font-size:0.86rem;margin-bottom:6px;">
-            ${bridgeOnline ? '✓ Step 2 Complete: Auto-Send Bridge Add-on Is Live!' : 'Step 2 (15 Seconds): Enable 100% Hands-Free Auto-Send Add-on'}
+            ${bridgeOnline ? '✓ Step 2 Complete: Auto-Send Bridge Add-on Is Live!' : 'Step 2 (30 Seconds): Install the Thunderbird Auto-Send Add-on (v1.5)'}
           </div>
           ${bridgeOnline ? `
             <div class="mono" style="font-size:0.78rem;">
-              Thunderbird Companion Add-on v${esc(bridge.version || '1.3.0')} is actively synced (last heartbeat ${esc(bridge.last_seen_seconds ?? 0)}s ago). Clicking <strong>Send Approved Mail</strong> will now send automatically with zero extra clicks!
+              Thunderbird Companion Add-on v${esc(bridge.version || '1.5.0')} is actively synced (last heartbeat ${esc(bridge.last_seen_seconds ?? 0)}s ago). Clicking <strong>Send Approved Mail</strong> will now send automatically with zero extra clicks!
             </div>
           ` : `
-            <div class="mono" style="font-size:0.77rem;line-height:1.55;margin-bottom:10px;">
-              <strong>Option A (Fastest — 1 Click):</strong> Click <strong>Install Add-on Into Thunderbird</strong> below, restart Thunderbird once, and click <strong>Enable</strong>.<br/>
-              <strong>Option B (Manual Drag &amp; Drop):</strong> Click <strong>Download .xpi</strong> &rarr; open Thunderbird &rarr; <strong>&#9776; Menu &rarr; Add-ons and Themes &rarr; &#9881; Gear Icon &rarr; Install Add-on From File...</strong> &rarr; pick <code>employmaxing-bridge.xpi</code>.
+            <div class="mono" style="font-size:0.77rem;line-height:1.6;margin-bottom:10px;">
+              <strong>Recommended (Guaranteed on Thunderbird 115 / 128+):</strong><br/>
+              1. Click <strong>Download employmaxing-bridge.xpi</strong> below.<br/>
+              2. Open Thunderbird &rarr; <strong>&#9776; Menu &rarr; Add-ons and Themes &rarr; &#9881; Gear Icon &rarr; Install Add-on From File...</strong> &rarr; pick <code>employmaxing-bridge.xpi</code> &rarr; click <strong>Add</strong>.<br/>
+              3. Click the <strong>EMPLOY</strong> button in Thunderbird's top toolbar &rarr; click <strong>Test &amp; Sync Now</strong>. The badge above will turn green immediately!
             </div>
             <div class="btn-row">
-              <button type="button" class="btn btn-sm btn-black" onclick="installThunderbirdAddon()">1-Click Install Into Thunderbird</button>
-              <a class="btn btn-sm btn-yellow" href="/api/thunderbird/addon.xpi" download="employmaxing-bridge.xpi">Download employmaxing-bridge.xpi</a>
+              <a class="btn btn-sm btn-lime" href="/api/thunderbird/addon.xpi" download="employmaxing-bridge.xpi">1. Download employmaxing-bridge.xpi</a>
+              <button type="button" class="btn btn-sm btn-black" onclick="installThunderbirdAddon()">Copy Into Profile Folder</button>
+            </div>
+            <div class="mono" style="font-size:0.72rem;color:#555;margin-top:6px;">
+              Note: Thunderbird 115+ disables folder-copied add-ons by default until you install via Add-ons Manager above.
             </div>
           `}
         </div>
@@ -544,9 +569,15 @@ async function startOAuth(provider, prefix) {
       const det = document.getElementById(`${prefix}-${provider}-setup`);
       if (det) {
         det.open = true;
+        if (!det.querySelector('.oauth-hint-box')) {
+          const hint = document.createElement('div');
+          hint.className = 'inline-result warn oauth-hint-box';
+          hint.innerHTML = `<strong>Direct ${provider.toUpperCase()} OAuth needs a 1-time Client ID</strong> (because Employmaxing runs 100% locally with no cloud server). Don't want to create an API key? <button type="button" class="btn btn-sm btn-lime" style="margin-left:6px;" onclick="selectMailProvider('thunderbird')">Use Thunderbird ★ Instead (Zero API Setup)</button>`;
+          det.prepend(hint);
+        }
         det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-      toast(`Paste a ${provider.toUpperCase()} Client ID once (or bundle it in employmaxing/oauth_defaults.json) to enable instant 1-click popups!`);
+      toast(`Paste a ${provider.toUpperCase()} Client ID once — or click Thunderbird ★ for zero-API setup!`);
     } else {
       toast(e.message);
     }
@@ -653,6 +684,8 @@ async function refreshAll() {
     STATE.jobs = jobsRes.jobs || [];
     STATE.emails = emailsRes.emails || [];
     STATE.forms = formsRes.forms || [];
+    STATE.browserCdpAvailable = !!formsRes.browser_cdp_available;
+    STATE.detectedBrowser = formsRes.detected_browser || '';
 
     const obBadge = document.getElementById('badge-onboarding');
     if (obBadge) {
@@ -660,6 +693,8 @@ async function refreshAll() {
       obBadge.className = `nav-badge ${onb.completed ? '' : 'alert'}`;
     }
     populateWizardStep2(onb.defaults, STATE.facts);
+    populateJobDropdowns();
+    renderNextStepBar();
 
     // Auto-route brand-new users directly to 00 // Get Started on first visit!
     if (!STATE.initialRouted) {
@@ -791,7 +826,7 @@ function renderFacts() {
         <td class="mono">
           <div><strong>SRC:</strong> ${esc(f.source)}</div>
           <div><strong>USE:</strong> ${esc(f.planned_usage)}</div>
-          ${f.source_url ? `<a href="${esc(f.source_url)}" target="_blank">source link &nearr;</a>` : ''}
+          ${f.source_url ? `<a href="${esc(safeUrl(f.source_url))}" target="_blank" rel="noopener noreferrer">source link &nearr;</a>` : ''}
         </td>
         <td><span class="tag ${tagCls}">${esc(f.consent_status)}</span></td>
         <td>
@@ -933,17 +968,26 @@ function copyText(txt) {
 }
 
 async function fetchJobUrl() {
-  const url = document.getElementById('job-url').value.trim();
-  if (!url) return toast('Paste a job posting URL first.');
-  toast('Fetching job posting metadata & description...');
+  const rawUrl = document.getElementById('job-url').value.trim();
+  if (!rawUrl) {
+    setInlineResult('job-fetch-result', 'warn', 'Paste a job posting URL first (e.g. https://jobs.ashbyhq.com/... or Greenhouse/Lever URL).');
+    return toast('Paste a job posting URL first.');
+  }
+  const url = safeUrl(rawUrl);
+  document.getElementById('job-url').value = url;
+  setInlineResult('job-fetch-result', 'warn', 'Fetching job posting metadata & description...');
   try {
     const res = await api('/api/jobs/fetch-url', { method: 'POST', body: JSON.stringify({ url }) });
     if (res.company) document.getElementById('job-company').value = res.company;
     if (res.role) document.getElementById('job-role').value = res.role;
     if (res.location) document.getElementById('job-location').value = res.location;
     if (res.posting_text) document.getElementById('job-posting').value = res.posting_text;
-    toast(`Fetched ${res.company} — ${res.role} (${(res.ats_type || 'web').toUpperCase()})!`);
-  } catch (e) { toast(`Fetch failed: ${e.message}`); }
+    setInlineResult('job-fetch-result', 'ok', `Fetched <strong>${esc(res.company || 'Company')}</strong> — ${esc(res.role || 'Role')} (${esc((res.ats_type || 'web').toUpperCase())}). Review fields below and click <strong>Add &amp; Build Form Plan</strong>.`);
+    toast(`Fetched ${res.company} — ${res.role}!`);
+  } catch (e) {
+    setInlineResult('job-fetch-result', 'err', `Could not auto-fetch URL (${esc(e.message)}). Some sites block automated scrapers — you can still fill Company, Role &amp; paste the Job Description below.`);
+    toast(`Fetch failed: ${e.message}`);
+  }
 }
 
 async function addJob(buildFormAfter = false) {
@@ -981,7 +1025,7 @@ async function loadDorks() {
           <div style="font-weight:800;font-size:0.85rem;">${esc(q.board)}</div>
           <div class="mono" style="font-size:0.74rem;color:#444;">${esc(q.query)}</div>
         </div>
-        <a class="btn btn-sm btn-lime" href="${esc(q.fresh_google_url)}" target="_blank">Open &lt;48h &nearr;</a>
+        <a class="btn btn-sm btn-lime" href="${esc(safeUrl(q.fresh_google_url))}" target="_blank" rel="noopener noreferrer">Open &lt;48h &nearr;</a>
       </div>
     `).join('');
   } catch (e) { toast(e.message); }
@@ -1029,7 +1073,7 @@ function renderJobs() {
       <tr>
         <td>
           <strong>${esc(j.company)}</strong> — ${esc(j.role)}
-          <div class="mono" style="margin-top:4px;font-size:0.74rem;">ID: ${esc(j.id)} ${j.url ? `| <a href="${esc(j.url)}" target="_blank">Posting &nearr;</a>` : ''}</div>
+          <div class="mono" style="margin-top:4px;font-size:0.74rem;">ID: ${esc(j.id)} ${j.url ? `| <a href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener noreferrer">Posting &nearr;</a>` : ''}</div>
         </td>
         <td>
           <div><span class="tag tag-black">${esc(j.priority_tier)}</span></div>
@@ -1166,18 +1210,100 @@ async function runFollowupCheck() {
   } catch (e) { toast(e.message); }
 }
 
+function renderNextStepBar() {
+  const bar = document.getElementById('next-step-bar');
+  if (!bar) return;
+  const onb = STATE.onboarding || {};
+  const mailCfg = STATE.mailCfg || {};
+  const pendingFacts = (STATE.facts || []).filter(f => f.consent_status === 'pending_review').length;
+  const jobs = STATE.jobs || [];
+  const forms = STATE.forms || [];
+
+  let label = 'YOUR NEXT STEP';
+  let text = '';
+  let btnLabel = '';
+  let btnAction = '';
+
+  if (!onb.has_resume && (STATE.facts || []).length === 0) {
+    label = 'STEP 1 OF 4 // START HERE';
+    text = 'Upload your resume so Employmaxing can auto-fill your profile, preferences, and application forms.';
+    btnLabel = 'Go to Step 1: Upload Resume →';
+    btnAction = "switchView('onboarding');goWizardStep(1);";
+  } else if (pendingFacts > 0) {
+    label = 'STEP 2 OF 4 // APPROVE YOUR INFO';
+    text = `${pendingFacts} extracted fact(s) are waiting for your OK before they can be used in resumes or forms.`;
+    btnLabel = `Review & Approve (${pendingFacts}) →`;
+    btnAction = "jumpToFacts('pending_review');";
+  } else if (!mailCfg.configured) {
+    label = 'STEP 3 OF 4 // CONNECT MAIL';
+    text = 'Connect ONE mail provider so Employmaxing can track recruiter replies and send approved outreach. Thunderbird is fastest!';
+    btnLabel = 'Connect Mail Provider →';
+    btnAction = "switchView('onboarding');goWizardStep(3);";
+  } else if (jobs.length === 0) {
+    label = 'STEP 4 OF 4 // ADD FIRST TARGET JOB';
+    text = 'Paste any Greenhouse, Lever, Ashby, or company job URL to score it, tailor your resume, and generate 1-click autofill.';
+    btnLabel = 'Add a Target Job →';
+    btnAction = "switchView('jobs');";
+  } else if (forms.length === 0) {
+    label = 'READY TO APPLY';
+    text = `You have ${jobs.length} tracked job(s). Build a 1-click Autofill Plan to fill forms in Firefox, Chrome, Edge, or Safari.`;
+    btnLabel = 'Build Autofill Plan →';
+    btnAction = "switchView('forms');";
+  } else {
+    label = 'ALL SYSTEMS READY';
+    text = `${jobs.length} tracked job(s) · ${forms.length} autofill plan(s) ready · ${mailCfg.provider ? mailCfg.provider.toUpperCase() + ' connected' : 'Mail ready'}.`;
+    btnLabel = 'Open Autofill Forms →';
+    btnAction = "switchView('forms');";
+  }
+
+  bar.innerHTML = `
+    <div>
+      <div class="ns-label">${label}</div>
+      <div class="ns-text">${text}</div>
+    </div>
+    <button type="button" class="btn btn-sm btn-lime" onclick="${btnAction}">${btnLabel}</button>
+  `;
+}
+
+function populateJobDropdowns() {
+  const jobs = STATE.jobs || [];
+  ['form-job-id', 'mail-job-id'].forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel || sel.tagName !== 'SELECT') return;
+    const prev = sel.value;
+    const placeholder = id === 'form-job-id'
+      ? (jobs.length ? '— Select a tracked job —' : '— No tracked jobs yet (add one in 04 // Jobs & Apps) —')
+      : '— No linked job (optional) —';
+    sel.innerHTML = `<option value="">${placeholder}</option>` + jobs.map(j =>
+      `<option value="${esc(j.id)}">${esc(j.company)} — ${esc(j.role)} (${esc(j.stage)})</option>`
+    ).join('');
+    if (prev && jobs.some(j => j.id === prev)) sel.value = prev;
+    else if (id === 'form-job-id' && jobs.length === 1) sel.value = jobs[0].id;
+  });
+}
+
 async function launchCDPBrowser() {
-  toast('Launching dedicated Employmaxing Chrome window (port 9222)...');
+  setInlineResult('form-action-result', 'warn', 'Checking for Chrome / Chromium / Brave / Edge on port 9222...');
+  toast('Checking for Chrome CDP browser...');
   try {
     const res = await api('/api/forms/launch-browser', { method: 'POST', body: '{}' });
-    toast(res.ready ? 'Automated Chrome CDP window is READY!' : (res.error || 'Could not launch Chrome'));
-  } catch (e) { toast(e.message); }
+    if (res.ready) {
+      setInlineResult('form-action-result', 'ok', `<strong>Chrome CDP Window READY!</strong> (${esc(res.browser || 'Connected on port 9222')}). Click <strong>Run Chrome CDP Auto-Fill</strong> on any form plan below.`);
+      toast('Automated Chrome CDP window is READY!');
+    } else {
+      setInlineResult('form-action-result', 'warn', `<strong>Chrome CDP unavailable:</strong> ${esc(res.error || 'Could not launch Chrome')}<br/><strong>Good news:</strong> You do NOT need Chrome! Use the green <strong>⚡ DRAG TO BOOKMARKS: FILL FORM</strong> button on any form card below — it works in Firefox, Safari, Edge, and Chrome.`);
+      toast(res.error || 'Chrome not found — use Universal Bookmarklet!');
+    }
+  } catch (e) {
+    setInlineResult('form-action-result', 'err', `Launch error: ${esc(e.message)}`);
+    toast(e.message);
+  }
 }
 
 async function planFormForJob(job_id) {
   try {
     await api('/api/forms/plan', { method: 'POST', body: JSON.stringify({ job_id }) });
-    toast(`Created knockout-safe form plan for ${job_id}`);
+    toast(`Created autofill plan for ${job_id}`);
     await refreshAll();
     switchView('forms');
   } catch (e) { toast(e.message); }
@@ -1202,9 +1328,13 @@ async function queueEmail() {
         job_id: document.getElementById('mail-job-id').value.trim(),
       }),
     });
+    setInlineResult('mail-action-result', 'ok', `Queued Email #${res.email_id} (Score: <strong>${res.mail_score}/100</strong> | MX: <strong>${esc(res.mx.gateway)}</strong>). Click <strong>Approve</strong> in the table below, then click <strong>Send Approved Mail</strong>.`);
     toast(`Queued #${res.email_id} — Score ${res.mail_score}/100 | MX: ${res.mx.gateway}`);
     refreshAll();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    setInlineResult('mail-action-result', 'err', `Queue error: ${esc(e.message)}`);
+    toast(e.message);
+  }
 }
 
 async function approveEmail(id) {
@@ -1216,20 +1346,32 @@ async function approveEmail(id) {
 }
 
 async function sendApprovedNow(dry_run) {
+  setInlineResult('mail-action-result', 'warn', dry_run ? 'Running dry-run on approved emails...' : 'Sending approved emails via your connected provider...');
   try {
     const res = await api('/api/emails/send', { method: 'POST', body: JSON.stringify({ dry_run }) });
-    toast(res.message || `${dry_run ? 'DRY-RUN' : 'SENT'}: ${(res.sent || []).length} email(s).`);
+    const msg = res.message || `${dry_run ? 'DRY-RUN' : 'SENT'}: ${(res.sent || []).length} email(s).`;
+    setInlineResult('mail-action-result', (res.errors && res.errors.length) ? 'err' : 'ok', esc(msg));
+    toast(msg);
     refreshAll();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    setInlineResult('mail-action-result', 'err', `Send error: ${esc(e.message)}`);
+    toast(e.message);
+  }
 }
 
 async function scanInboxNow() {
+  setInlineResult('mail-action-result', 'warn', 'Scanning connected mailbox for recruiter & interview replies...');
   toast('Scanning connected mailbox for recruiter & interview replies...');
   try {
     const res = await api('/api/emails/scan-inbox', { method: 'POST', body: JSON.stringify({ days: 14 }) });
-    toast(res.message || `Inbox scanned: ${(res.new_replies || []).length} job message(s) found.`);
+    const msg = res.message || `Inbox scanned: ${(res.new_replies || []).length} job message(s) found.`;
+    setInlineResult('mail-action-result', res.status === 'not_configured' ? 'warn' : 'ok', esc(msg));
+    toast(msg);
     refreshAll();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    setInlineResult('mail-action-result', 'err', `Inbox scan error: ${esc(e.message)}`);
+    toast(e.message);
+  }
 }
 
 function filterEmails(flt, btn) {
@@ -1283,57 +1425,126 @@ function renderEmails() {
 async function createFormPlan() {
   const job_id = document.getElementById('form-job-id').value.trim();
   const form_url = document.getElementById('form-url').value.trim();
-  if (!job_id) return toast('Enter a Job ID first.');
+  if (!job_id) {
+    setInlineResult('form-action-result', 'warn', 'Pick a tracked job from the dropdown first (or add one in <strong>04 // Jobs &amp; Apps</strong>).');
+    return toast('Select a tracked job first.');
+  }
   try {
-    await api('/api/forms/plan', { method: 'POST', body: JSON.stringify({ job_id, form_url }) });
-    toast('Transparent form plan built!');
+    const res = await api('/api/forms/plan', { method: 'POST', body: JSON.stringify({ job_id, form_url }) });
+    setInlineResult('form-action-result', 'ok', `Built Autofill Plan <strong>#${res.id}</strong> (${(res.field_plan || []).length} approved fields). Drag the green <strong>⚡ FILL FORM</strong> button below to your bookmarks bar, open the job page, and click it!`);
+    toast('Autofill plan ready!');
     refreshAll();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    setInlineResult('form-action-result', 'err', `Could not build form plan: ${esc(e.message)}`);
+    toast(e.message);
+  }
+}
+
+function copyFormScript(id) {
+  const fm = (STATE.forms || []).find(f => f.id === id);
+  if (!fm || !fm.autofill_script) return toast('No autofill script available for this plan.');
+  copyText(fm.autofill_script);
+  STATE.formResults[id] = {
+    kind: 'ok',
+    html: '<strong>Autofill Script Copied!</strong> Open the job application page &rarr; press <code>F12</code> (Console tab) &rarr; paste &amp; press <code>Enter</code>. All fields fill immediately!',
+  };
+  renderForms();
 }
 
 async function executeFormCDP(id) {
-  toast(`Executing CDP auto-fill for Form #${id}...`);
+  STATE.formResults[id] = { kind: 'warn', html: `Running Chrome CDP auto-fill for Form #${id}...` };
+  renderForms();
   try {
     const res = await api(`/api/forms/${id}/execute`, { method: 'POST', body: '{}' });
+    if (res.status === 'filled_pending_submit') {
+      const filled = (res.filled_fields || []).length;
+      const missed = (res.missed_fields || []).length;
+      STATE.formResults[id] = {
+        kind: 'ok',
+        html: `<strong>Chrome CDP Filled ${filled} field(s)</strong>${missed ? ` (${missed} manual/missed)` : ''}! Review the screenshot below &amp; your Chrome tab before clicking Submit.`,
+      };
+    } else {
+      STATE.formResults[id] = {
+        kind: 'warn',
+        html: `<strong>Chrome CDP unavailable:</strong> ${esc(res.message || res.status)}<br/><strong>Use Step 2 above instead:</strong> Drag the green <strong>⚡ FILL FORM</strong> bookmarklet to your bookmarks bar (or click <strong>Copy Console Script</strong>) — works in Firefox, Safari, Edge &amp; Chrome!`,
+      };
+    }
     toast(res.message || res.note || `Form #${id}: ${res.status}`);
-    refreshAll();
-  } catch (e) { toast(e.message); }
+    await refreshAll();
+  } catch (e) {
+    STATE.formResults[id] = { kind: 'err', html: `<strong>CDP Error:</strong> ${esc(e.message)}` };
+    renderForms();
+    toast(e.message);
+  }
 }
 
 function renderForms() {
+  const cdpBanner = document.getElementById('form-cdp-status');
+  if (cdpBanner) {
+    if (STATE.browserCdpAvailable) {
+      cdpBanner.innerHTML = `<div class="banner ok"><span><strong>2 AUTOFILL MODES READY:</strong> (1) Universal Bookmarklet (works in Firefox/Chrome/Edge/Safari) AND (2) Chrome CDP Auto-Fill (${esc(STATE.detectedBrowser)}).</span></div>`;
+    } else {
+      cdpBanner.innerHTML = `<div class="banner warn"><span><strong>FIREFOX / UNIVERSAL MODE ACTIVE:</strong> No Chrome/Chromium binary detected for CDP — use the <strong>1-Click Universal Autofill Bookmarklet</strong> or <strong>Copy Console Script</strong> on each form card below (works in Firefox, Safari, Edge &amp; Chrome!).</span></div>`;
+    }
+  }
+
   const container = document.getElementById('forms-container');
   if (!STATE.forms.length) {
-    container.innerHTML = '<div class="card"><div class="empty-state">No ATS form plans created yet. Pick a tracked job and click "Form Plan".</div></div>';
+    container.innerHTML = '<div class="card"><div class="empty-state">No autofill plans created yet. Pick a tracked job above (or add one in <strong>04 // Jobs &amp; Apps</strong>) and click <strong>Build Autofill Plan</strong>.</div></div>';
     return;
   }
-  container.innerHTML = STATE.forms.map(fm => `
+  container.innerHTML = STATE.forms.map(fm => {
+    const openUrl = safeUrl(fm.form_url);
+    const resBox = STATE.formResults[fm.id];
+    return `
     <div class="card">
       <div class="card-header">
         <div>
           <h2 class="card-title">Form #${fm.id} // ${esc(fm.job_id)} <span class="tag tag-blue">${esc(fm.ats_type)}</span></h2>
-          <div class="mono" style="margin-top:4px;font-size:0.76rem;">${esc(fm.form_url)} | STATUS: <strong>${esc(fm.status)}</strong> | FACTS USED: #${(fm.facts_used || []).join(', #') || 'none'}</div>
+          <div class="mono" style="margin-top:4px;font-size:0.76rem;">
+            ${openUrl ? `<a href="${esc(openUrl)}" target="_blank" rel="noopener noreferrer">${esc(openUrl)} &nearr;</a>` : '<em>No application URL saved</em>'}
+            | STATUS: <strong>${esc(fm.status)}</strong>
+            | FACTS USED: #${(fm.facts_used || []).join(', #') || 'none'}
+          </div>
         </div>
-        <button class="btn btn-black" onclick="executeFormCDP(${fm.id})">Execute CDP Auto-Fill</button>
       </div>
+
+      <div style="border:2px solid #111;background:#FFFDF0;padding:12px 14px;margin-bottom:14px;">
+        <div class="mono" style="font-weight:900;margin-bottom:8px;text-transform:uppercase;">How to Autofill This Form (Works in Firefox, Chrome, Edge &amp; Safari):</div>
+        <div class="btn-row">
+          ${openUrl ? `<a class="btn btn-sm btn-yellow" href="${esc(openUrl)}" target="_blank" rel="noopener noreferrer">1. Open Application Page &nearr;</a>` : ''}
+          ${fm.autofill_bookmarklet ? `<a class="bookmarklet-pill" href="${esc(fm.autofill_bookmarklet)}" onclick="event.preventDefault();toast('Drag this green button onto your Bookmarks Bar, then click it on the job application page!');" title="Drag onto your browser Bookmarks Bar">&#9889; 2. Drag to Bookmarks: Fill #${fm.id}</a>` : ''}
+          <button type="button" class="btn btn-sm btn-blue" onclick="copyFormScript(${fm.id})">Or Copy Console Autofill Script</button>
+          <button type="button" class="btn btn-sm btn-black" onclick="executeFormCDP(${fm.id})">${STATE.browserCdpAvailable ? '3. Run Chrome CDP Auto-Fill' : 'Try Chrome CDP (Chrome Only)'}</button>
+        </div>
+        <div class="mono" style="font-size:0.72rem;color:#444;margin-top:8px;">
+          Tip: Drag the dashed green button to your browser Bookmarks Bar once, open the job form, and click the bookmark to fill all fields instantly! Or click <strong>Copy</strong> next to any field below.
+        </div>
+      </div>
+
+      ${resBox ? `<div class="inline-result ${resBox.kind}">${resBox.html}</div>` : ''}
       ${(fm.knockout_warnings || []).map(w => `<div class="banner danger"><span>${esc(w)}</span></div>`).join('')}
+
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Field</th><th>Planned Answer</th><th>Type / Fact Source</th></tr></thead>
+          <thead><tr><th>Field</th><th>Planned Answer</th><th>Source</th><th>Quick Copy</th></tr></thead>
           <tbody>
-            ${(fm.field_plan || []).map(fld => `
+            ${(fm.field_plan || []).length ? (fm.field_plan || []).map(fld => `
               <tr>
                 <td><strong>${esc(fld.field)}</strong></td>
                 <td class="mono">${esc(fld.value)}</td>
                 <td class="mono">${esc(fld.type)} ${fld.fact_id ? `<span class="tag tag-lime">FACT #${fld.fact_id}</span>` : ''}</td>
+                <td><button type="button" class="btn btn-sm btn-lime" onclick="copyText(${JSON.stringify(String(fld.value || ''))})">Copy</button></td>
               </tr>
-            `).join('')}
+            `).join('') : '<tr><td colspan="4"><div class="empty-state">No approved profile facts found yet. Complete <strong>00 // Get Started</strong> or approve facts in <strong>02 // Info &amp; Consent</strong>, then rebuild this plan.</div></td></tr>'}
           </tbody>
         </table>
       </div>
-      ${(fm.files_attached || []).length ? `<div style="margin-top:12px;" class="mono"><strong>AUTO-ATTACHED FILES (CDP DOM.setFileInputFiles):</strong> ${fm.files_attached.map(f => `<span class="tag tag-yellow">${esc(f.label)}: ${esc(f.path)}</span>`).join(' ')}</div>` : ''}
+      ${(fm.files_attached || []).length ? `<div style="margin-top:12px;" class="mono"><strong>FILES TO ATTACH:</strong> ${fm.files_attached.map(f => `<span class="tag tag-yellow">${esc(f.label)}: ${esc(f.path)}</span> <button type="button" class="btn btn-sm" onclick="copyText(${JSON.stringify(f.path)})">Copy Path</button>`).join(' ')}</div>` : ''}
       ${fm.screenshot_path ? `<img class="screenshot-preview" src="/api/files/screenshots/${esc(fm.screenshot_path.split('/').pop())}" alt="Form Review Screenshot" />` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 refreshAll();

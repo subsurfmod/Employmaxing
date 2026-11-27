@@ -54,6 +54,63 @@ def detect_ats(url: str) -> str:
     return "generic"
 
 
+def normalize_url(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return ""
+    if re.match(r'^https?://', u, flags=re.I):
+        return u
+    return f"https://{u}"
+
+
+def generate_universal_autofill_js(field_plan: list[dict]) -> dict:
+    """
+    Generate a self-contained React/Vue/SPA-safe JavaScript autofill snippet and
+    1-click `javascript:` bookmarklet that works in Firefox, Chrome, Edge, Brave, and Safari
+    without requiring Chrome CDP.
+    """
+    compact_plan = [
+        {"f": item.get("field", ""), "s": item.get("selectors", []), "v": str(item.get("value", ""))}
+        for item in (field_plan or [])
+        if item.get("value")
+    ]
+    plan_json = json.dumps(compact_plan, separators=(",", ":"), ensure_ascii=True)
+    # Single-line IIFE with native value setters + visible Neo-Brutalist confirmation toast
+    js = (
+        "(function(P){"
+        "var nI=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set,"
+        "nT=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set,"
+        "els=Array.from(document.querySelectorAll('input,textarea,select')),"
+        "ok=[],miss=[];"
+        "P.forEach(function(it){"
+        "var tk=(it.s||[]).concat([it.f.toLowerCase()]),m=null;"
+        "for(var i=0;i<els.length;i++){"
+        "var e=els[i];if(e.type==='hidden'||e.type==='file'||e.disabled)continue;"
+        "var lb=e.id?document.querySelector('label[for=\"'+CSS.escape(e.id)+'\"]'):e.closest('label');"
+        "var h=[e.name||'',e.id||'',e.placeholder||'',e.getAttribute('aria-label')||'',e.getAttribute('autocomplete')||'',lb?lb.innerText:''].join(' ').toLowerCase();"
+        "if(tk.some(function(t){return t&&h.indexOf(t.toLowerCase())!==-1;})){m=e;break;}}"
+        "if(!m){miss.push(it.f);return;}"
+        "if(m.tagName==='SELECT'){"
+        "var vl=it.v.toLowerCase(),op=Array.from(m.options).find(function(o){return o.text.toLowerCase().indexOf(vl)!==-1||o.value.toLowerCase().indexOf(vl)!==-1;});"
+        "if(op){m.value=op.value;m.dispatchEvent(new Event('change',{bubbles:true}));ok.push(it.f);}else{miss.push(it.f);}"
+        "}else{"
+        "(m.tagName==='TEXTAREA'?nT:nI).call(m,it.v);"
+        "m.dispatchEvent(new Event('input',{bubbles:true}));"
+        "m.dispatchEvent(new Event('change',{bubbles:true}));"
+        "m.dispatchEvent(new Event('blur',{bubbles:true}));"
+        "ok.push(it.f);}});"
+        "var b=document.createElement('div');"
+        "b.textContent='EMPLOYMAXING: Filled '+ok.length+'/'+(ok.length+miss.length)+' fields! Review & submit.';"
+        "b.style.cssText='position:fixed;top:16px;right:16px;z-index:2147483647;background:#C8FF2E;color:#111;border:3px solid #111;box-shadow:5px 5px 0 #111;padding:12px 16px;font:900 13px/1.3 monospace;text-transform:uppercase;';"
+        "document.body.appendChild(b);setTimeout(function(){b.remove();},6500);"
+        "})(" + plan_json + ");"
+    )
+    return {
+        "script": js,
+        "bookmarklet": "javascript:" + js,
+    }
+
+
 def build_transparent_form_plan(store: EmploymaxingStore, job_id: str, form_url: str = "") -> dict:
     """
     Build a complete form-filling plan strictly from APPROVED facts in EmploymaxingStore,
@@ -63,7 +120,7 @@ def build_transparent_form_plan(store: EmploymaxingStore, job_id: str, form_url:
     if not job:
         raise ValueError(f"Job '{job_id}' not found in Employmaxing store.")
 
-    target_url = form_url or job.get("url", "")
+    target_url = normalize_url(form_url or job.get("url", ""))
     ats = detect_ats(target_url)
     approved_facts = store.list_facts(consent_status="approved")
     fact_by_key = {}
@@ -242,8 +299,8 @@ class MinimalCDPClient:
             pass
 
 
-def find_interactive_browser() -> str | None:
-    """Locate a Chromium-based desktop browser for zero-CLI CDP auto-launch."""
+def find_interactive_browser() -> list[str] | None:
+    """Locate a Chromium-based desktop browser (native or Flatpak) for zero-CLI CDP auto-launch."""
     candidates = [
         shutil.which("google-chrome"),
         shutil.which("google-chrome-stable"),
@@ -259,7 +316,16 @@ def find_interactive_browser() -> str | None:
     ]
     for c in candidates:
         if c and os.path.exists(c):
-            return c
+            return [c]
+
+    if shutil.which("flatpak"):
+        for app_id in ("com.google.Chrome", "org.chromium.Chromium", "com.brave.Browser", "com.microsoft.Edge"):
+            try:
+                proc = subprocess.run(["flatpak", "info", app_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+                if proc.returncode == 0:
+                    return ["flatpak", "run", app_id]
+            except Exception:
+                continue
     return None
 
 
@@ -275,15 +341,21 @@ def ensure_cdp_browser(store: EmploymaxingStore, cdp_port: int = 9222, start_url
     except Exception:
         pass
 
-    browser = find_interactive_browser()
-    if not browser:
-        return {"ready": False, "error": "No Chromium-based browser (Chrome, Chromium, Brave, or Edge) found on PATH."}
+    browser_cmd = find_interactive_browser()
+    if not browser_cmd:
+        return {
+            "ready": False,
+            "error": (
+                "No Chromium-based browser (Chrome, Chromium, Brave, or Edge) is installed on this machine. "
+                "Use the 1-Click Universal Autofill Bookmarklet (works in Firefox, Safari, Chrome, Edge!) "
+                "or install Chromium: sudo dnf install chromium"
+            ),
+        }
 
     profile_dir = store.data_dir / "chrome-profile"
     profile_dir.mkdir(parents=True, exist_ok=True)
     subprocess.Popen(
-        [
-            browser,
+        browser_cmd + [
             f"--remote-debugging-port={cdp_port}",
             f"--user-data-dir={str(profile_dir)}",
             "--no-first-run",
@@ -300,10 +372,10 @@ def ensure_cdp_browser(store: EmploymaxingStore, cdp_port: int = 9222, start_url
             targets = _probe()
             if any(t.get("type") == "page" for t in targets):
                 store.log_event("chrome_cdp_launched", f"Auto-launched dedicated Chrome CDP window on port {cdp_port}")
-                return {"ready": True, "launched_new": True, "browser": browser, "targets": targets}
+                return {"ready": True, "launched_new": True, "browser": " ".join(browser_cmd), "targets": targets}
         except Exception:
             continue
-    return {"ready": False, "error": f"Launched {browser} but CDP port {cdp_port} did not respond in time."}
+    return {"ready": False, "error": f"Launched {' '.join(browser_cmd)} but CDP port {cdp_port} did not respond in time."}
 
 
 def execute_cdp_fill(store: EmploymaxingStore, submission_id: int, cdp_port: int = 9222, auto_submit: bool = False, auto_launch: bool = True) -> dict:

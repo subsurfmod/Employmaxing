@@ -12,7 +12,7 @@
     <aside class="sidebar">
       <div class="brand-box">
         <div class="brand-title">EMPLOYMAXING</div>
-        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.4</div>
+        <div class="brand-sub">LOCAL-ONLY // GPLv3 // v1.5</div>
       </div>
 
       <nav class="nav-list" id="nav-list">
@@ -55,6 +55,9 @@
 
     <!-- Main Workspace -->
     <main class="main-content">
+      <!-- PERSISTENT GUIDED NEXT-STEP BAR -->
+      <div id="next-step-bar" class="next-step-bar"></div>
+
       <!-- 00 // ZERO-CLI FIRST-TIME GET STARTED WIZARD -->
       <section id="view-onboarding" class="view-section">
         <div class="top-bar">
@@ -501,6 +504,7 @@
                   <button type="button" class="btn btn-sm btn-yellow" onclick="fetchJobUrl()" style="white-space:nowrap;">Fetch URL</button>
                 </div>
               </div>
+              <div id="job-fetch-result" style="grid-column:1 / -1;"></div>
               <div>
                 <label class="field-label">Location / Remote</label>
                 <input type="text" id="job-location" placeholder="Remote, US" />
@@ -602,6 +606,8 @@
           </div>
         </div>
 
+        <div id="mail-action-result"></div>
+
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
@@ -622,8 +628,10 @@
                 <input type="text" id="mail-subject" placeholder="scaling k8s pipelines at stripe" />
               </div>
               <div>
-                <label class="field-label">Linked Job ID (Optional)</label>
-                <input type="text" id="mail-job-id" placeholder="stripe-staff-engineer" />
+                <label class="field-label">Linked Job (Optional)</label>
+                <select id="mail-job-id">
+                  <option value="">— No linked job —</option>
+                </select>
               </div>
             </div>
             <div style="margin-bottom:12px;">
@@ -683,29 +691,38 @@
       <section id="view-forms" class="view-section">
         <div class="top-bar">
           <div>
-            <h1 class="page-title">Complex ATS Form Fills</h1>
-            <p class="page-sub">Inspect every field, 75th-pct salary anchor, knockout safeguard, attached PDF, and auto-launched Chrome CDP fill.</p>
+            <h1 class="page-title">Autofill Application Forms</h1>
+            <p class="page-sub">Works in ANY browser (Firefox, Chrome, Edge, Safari) via 1-Click Universal Bookmarklet — plus optional Chrome CDP automation.</p>
           </div>
           <div class="btn-row">
-            <button class="btn btn-lime" onclick="launchCDPBrowser()">Launch Automated Chrome Window</button>
+            <button class="btn btn-lime" id="btn-launch-cdp" onclick="launchCDPBrowser()">Launch Chrome CDP Window</button>
           </div>
         </div>
 
+        <div id="form-cdp-status"></div>
+        <div id="form-action-result"></div>
+
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">Generate Knockout-Safe Form Plan (Approved Facts Only)</h2>
+            <h2 class="card-title">Build Autofill Plan for a Tracked Job</h2>
+            <span class="tag tag-lime">APPROVED FACTS ONLY</span>
           </div>
           <div class="form-grid">
             <div>
-              <label class="field-label">Tracked Job ID</label>
-              <input type="text" id="form-job-id" placeholder="e.g. stripe-staff-backend-engineer" />
+              <label class="field-label">Pick a Tracked Job</label>
+              <select id="form-job-id">
+                <option value="">— Select a tracked job —</option>
+              </select>
             </div>
             <div>
-              <label class="field-label">Override Application Form URL (Optional)</label>
-              <input type="url" id="form-url" placeholder="https://jobs.ashbyhq.com/..." />
+              <label class="field-label">Application Form URL (Optional Override)</label>
+              <input type="url" id="form-url" placeholder="Leave blank to use the job's saved URL" />
             </div>
           </div>
-          <button class="btn btn-blue" onclick="createFormPlan()">Build Transparent Form Plan</button>
+          <div class="btn-row">
+            <button class="btn btn-blue" onclick="createFormPlan()">Build Autofill Plan &rarr;</button>
+            <button class="btn" onclick="switchView('jobs')">Need to Add a Job First?</button>
+          </div>
         </div>
 
         <div id="forms-container"></div>

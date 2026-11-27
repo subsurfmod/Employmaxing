@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Employmaxing Auto-Send Bridge",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Connects local Employmaxing (http://127.0.0.1:8787) to Thunderbird for 100% hands-free plain-text sending AND sandbox-proof inbox reply reading via your signed-in Gmail, Outlook, Yahoo, or Proton account.",
   "author": "subsurfmod",
   "homepage_url": "https://github.com/subsurfmod/Employmaxing",

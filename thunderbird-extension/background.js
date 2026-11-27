@@ -1,6 +1,8 @@
-/* Employmaxing Auto-Send Bridge for Mozilla Thunderbird (GPL-3.0)
- * Polls strictly local http://127.0.0.1:8787 for user-approved plain-text emails
- * and sends them hands-free through Thunderbird's official compose.sendMessage API.
+/* Employmaxing Auto-Send Bridge for Mozilla Thunderbird v1.5 (GPL-3.0)
+ * - Fixes CORS preflight (server.py now handles OPTIONS for moz-extension://)
+ * - Uses valid >=1 min alarm + 5s interval heartbeat
+ * - Waits for Thunderbird compose editor readiness before sendMessage({ mode: "sendNow" })
+ * - Reads recent inbox messages via official messagesRead API (works in Flatpak/Snap/Maildir)
  */
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
@@ -8,9 +10,43 @@ const BRIDGE_HEADER = "employmaxing-tb-v1";
 let isProcessing = false;
 let lastInboxSyncTs = 0;
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function getSettings() {
+  return messenger.storage.local.get({
+    baseUrl: DEFAULT_BASE_URL,
+    paused: false,
+    lastStatus: "Connecting to http://127.0.0.1:8787...",
+    lastError: "",
+    lastPollAt: "",
+    sentCount: 0,
+  });
+}
+
+async function listLocalIdentities() {
+  const accounts = await messenger.accounts.list(false);
+  const found = [];
+  for (const acc of accounts) {
+    for (const id of (acc.identities || [])) {
+      if (id.email) {
+        found.push({
+          accountId: acc.id,
+          identityId: id.id,
+          email: id.email,
+          name: id.name || "",
+          accountName: acc.name || "",
+        });
+      }
+    }
+  }
+  return found;
+}
+
 async function collectRecentInboxMessages(force = false) {
   const now = Date.now();
-  if (!force && now - lastInboxSyncTs < 60000) return [];
+  if (!force && now - lastInboxSyncTs < 45000) return [];
   if (!messenger.messages || !messenger.messages.query) return [];
   lastInboxSyncTs = now;
   try {
@@ -49,73 +85,44 @@ async function collectRecentInboxMessages(force = false) {
   }
 }
 
-async function getSettings() {
-  const res = await messenger.storage.local.get({
-    baseUrl: DEFAULT_BASE_URL,
-    paused: false,
-    lastStatus: "Connecting to http://127.0.0.1:8787...",
-    lastPollAt: "",
-    sentCount: 0,
-  });
-  return res;
-}
-
-async function listLocalIdentities() {
-  const accounts = await messenger.accounts.list(false);
-  const found = [];
-  for (const acc of accounts) {
-    for (const id of (acc.identities || [])) {
-      if (id.email) {
-        found.push({
-          accountId: acc.id,
-          identityId: id.id,
-          email: id.email,
-          name: id.name || "",
-          accountName: acc.name || "",
-        });
-      }
-    }
-  }
-  return found;
-}
-
 async function sendViaThunderbird(job, identities) {
   const targetFrom = (job.from_email || "").toLowerCase();
-  let chosen = identities.find((i) => i.email.toLowerCase() === targetFrom) || identities[0];
+  const chosen = identities.find((i) => i.email.toLowerCase() === targetFrom) || identities[0];
   if (!chosen) {
-    throw new Error("No signed-in email identity found in Thunderbird.");
+    throw new Error("No signed-in email account found in Thunderbird.");
   }
 
-  const composeDetails = {
+  const tab = await messenger.compose.beginNew({
     identityId: chosen.identityId,
     to: [job.recipient_email],
     subject: job.subject || "(No Subject)",
     plainTextBody: job.body || "",
     isPlainText: true,
-  };
+  });
 
-  const tab = await messenger.compose.beginNew(composeDetails);
+  // Wait for Thunderbird compose editor to finish initializing before triggering sendNow
+  await sleep(900);
   try {
+    await messenger.compose.getComposeDetails(tab.id);
     const result = await messenger.compose.sendMessage(tab.id, { mode: "sendNow" });
     return {
       sent: true,
-      mode: result && result.mode ? result.mode : "sendNow",
+      mode: (result && result.mode) || "sendNow",
       headerMessageId: (result && result.headerMessageId) || "",
       from_email: chosen.email,
     };
   } catch (err) {
-    // Clean up compose window if send failed
     try { await messenger.tabs.remove(tab.id); } catch (_) {}
     throw err;
   }
 }
 
 async function pollEmploymaxing(forceInbox = false) {
-  if (isProcessing) return;
+  if (isProcessing) return { ok: false, reason: "busy" };
   const settings = await getSettings();
   if (settings.paused) {
-    await messenger.storage.local.set({ lastStatus: "Paused by user" });
-    return;
+    await messenger.storage.local.set({ lastStatus: "PAUSED", lastError: "" });
+    return { ok: true, paused: true };
   }
 
   isProcessing = true;
@@ -129,14 +136,14 @@ async function pollEmploymaxing(forceInbox = false) {
         "X-Employmaxing-Bridge": BRIDGE_HEADER,
       },
       body: JSON.stringify({
-        version: "1.4.0",
+        version: "1.5.0",
         accounts: identities.map((i) => ({ email: i.email, display_name: i.name })),
         recent_inbox: recentInbox,
       }),
     });
 
     if (!pollResp.ok) {
-      throw new Error(`HTTP ${pollResp.status}`);
+      throw new Error(`Employmaxing server returned HTTP ${pollResp.status}`);
     }
 
     const data = await pollResp.json();
@@ -175,32 +182,37 @@ async function pollEmploymaxing(forceInbox = false) {
     const totalSent = (settings.sentCount || 0) + sentNow;
     await messenger.storage.local.set({
       lastStatus: `ONLINE (${identities.length} account${identities.length === 1 ? "" : "s"} synced)`,
+      lastError: "",
       lastPollAt: new Date().toLocaleTimeString(),
       sentCount: totalSent,
     });
+    return { ok: true, accounts: identities.length, sentNow };
   } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
     await messenger.storage.local.set({
-      lastStatus: `Waiting for Employmaxing server (${settings.baseUrl})`,
+      lastStatus: `OFFLINE (start 'employmaxing serve')`,
+      lastError: msg,
       lastPollAt: new Date().toLocaleTimeString(),
     });
+    return { ok: false, error: msg };
   } finally {
     isProcessing = false;
   }
 }
 
-// Poll every 5 seconds while Thunderbird is open
-messenger.alarms.create("employmaxing_poll", { periodInMinutes: 0.1 });
-messenger.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "employmaxing_poll") pollEmploymaxing();
-});
+// Valid >= 1 min alarm (Thunderbird 115+ requirement) + fast 5s interval while open
+try {
+  messenger.alarms.create("employmaxing_poll", { periodInMinutes: 1 });
+  messenger.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "employmaxing_poll") pollEmploymaxing(false);
+  });
+} catch (_) {}
 
-// Fast 5-second interval fallback + immediate boot heartbeat
-setInterval(pollEmploymaxing, 5000);
-pollEmploymaxing();
+setInterval(() => pollEmploymaxing(false), 5000);
+pollEmploymaxing(true);
 
-// Allow popup to trigger immediate poll (including fresh inbox sync)
 messenger.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "poll_now") {
-    return pollEmploymaxing(true).then(() => ({ ok: true }));
+    return pollEmploymaxing(true);
   }
 });

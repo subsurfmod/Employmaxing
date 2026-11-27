@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "employmaxing"
-version = "1.4.0"
+version = "1.5.0"
 description = "Local-first AI Agent Skill for job hunting: Neo-Brutalist web UI, >=85-score XYZ resume optimizer, LinkedIn discrepancy auditor, Thunderbird auto-send bridge, and complex ATS CDP form filler."
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}

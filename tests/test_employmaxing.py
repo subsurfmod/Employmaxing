@@ -206,20 +206,47 @@ class TestEmploymaxingSuite(unittest.TestCase):
             self.assertEqual(ext["onboarding"]["defaults"]["full_name"], "Alex Mercer")
             post("/api/onboarding/complete", {**ext["onboarding"]["defaults"], "approve_all_extracted": True})
 
-            # 2. Job creation + Live Resume Editor/Scorer
-            job = post("/api/jobs", {"company": "Stripe", "role": "Staff Infrastructure Engineer", "url": "https://jobs.ashbyhq.com/stripe/1", "posting_text": SAMPLE_JD})
+            # 2. Job creation + Live Resume Editor/Scorer + Universal Autofill Bookmarklet + URL normalization
+            job = post("/api/jobs", {"company": "Stripe", "role": "Staff Infrastructure Engineer", "url": "jobs.ashbyhq.com/stripe/1", "posting_text": SAMPLE_JD})
+            self.assertEqual(job["job"]["url"], "https://jobs.ashbyhq.com/stripe/1")
             r_scored = post(f"/api/jobs/{job['id']}/resume", {"content": SAMPLE_RESUME, "autofix": True})
             self.assertGreaterEqual(r_scored["audit"]["total_score"], 85)
 
-            # 3. Thunderbird Bridge Security Guard + Poll with messagesRead + Auto-Send Ack
+            plan = post("/api/forms/plan", {"job_id": job["id"]})
+            self.assertTrue(plan["autofill_bookmarklet"].startswith("javascript:(function(P){"))
+            self.assertEqual(plan["form_url"], "https://jobs.ashbyhq.com/stripe/1")
+            forms_resp = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/forms").read().decode())
+            self.assertIn("browser_cdp_available", forms_resp)
+            self.assertEqual(len(forms_resp["forms"]), 1)
+            self.assertTrue(forms_resp["forms"][0]["autofill_script"].startswith("(function(P){"))
+
+            # 3. Thunderbird Bridge CORS Preflight (OPTIONS) + Security Guard + Poll
+            opt_req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/thunderbird/bridge/poll",
+                headers={"Origin": "moz-extension://test-addon-uuid", "Access-Control-Request-Headers": "Content-Type, X-Employmaxing-Bridge"},
+                method="OPTIONS",
+            )
+            with urllib.request.urlopen(opt_req) as opt_resp:
+                self.assertEqual(opt_resp.status, 204)
+                self.assertEqual(opt_resp.headers.get("Access-Control-Allow-Origin"), "moz-extension://test-addon-uuid")
+                self.assertIn("X-Employmaxing-Bridge", opt_resp.headers.get("Access-Control-Allow-Headers", ""))
+
+            evil_opt = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/thunderbird/bridge/poll",
+                headers={"Origin": "https://evil.example"},
+                method="OPTIONS",
+            )
+            with urllib.request.urlopen(evil_opt) as evil_resp:
+                self.assertIsNone(evil_resp.headers.get("Access-Control-Allow-Origin"))
+
             with self.assertRaises(urllib.error.HTTPError) as ctx:
                 post("/api/thunderbird/bridge/poll", {})
             self.assertEqual(ctx.exception.code, 403)
 
             post("/api/thunderbird/connect", {"email": "alex@gmail.com"})
-            hdr = {"X-Employmaxing-Bridge": "employmaxing-tb-v1"}
+            hdr = {"X-Employmaxing-Bridge": "employmaxing-tb-v1", "Origin": "moz-extension://test-addon-uuid"}
             poll_res = post("/api/thunderbird/bridge/poll", {
-                "version": "1.4.0",
+                "version": "1.5.0",
                 "accounts": [{"email": "alex@gmail.com"}],
                 "recent_inbox": [{
                     "from": "Priya <priya@stripe.com>",

@@ -40,7 +40,14 @@ from employmaxing.enricher import (
     ingest_resume,
 )
 from employmaxing.build_xpi import OUT_XPI, build_xpi
-from employmaxing.form_filler import build_transparent_form_plan, ensure_cdp_browser, execute_cdp_fill
+from employmaxing.form_filler import (
+    build_transparent_form_plan,
+    ensure_cdp_browser,
+    execute_cdp_fill,
+    find_interactive_browser,
+    generate_universal_autofill_js,
+    normalize_url,
+)
 from employmaxing.job_fetcher import fetch_job_from_url
 from employmaxing.mail_oauth import (
     complete_oauth_callback,
@@ -123,18 +130,38 @@ def _build_onboarding_status(store: EmploymaxingStore) -> dict:
 def make_handler(store: EmploymaxingStore, automation: BackgroundAutomation | None = None):
     auto = automation or BackgroundAutomation(store)
     class EmploymaxingHandler(BaseHTTPRequestHandler):
-        server_version = "EmploymaxingLocal/1.4"
+        server_version = "EmploymaxingLocal/1.5"
+
+        def _cors_origin(self) -> str:
+            origin = (self.headers.get("Origin") or "").strip()
+            if origin.startswith(("moz-extension://", "chrome-extension://", "http://127.0.0.1", "http://localhost")):
+                return origin
+            return ""
+
+        def _write_cors_headers(self):
+            origin = self._cors_origin()
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Employmaxing-Bridge")
+                self.send_header("Vary", "Origin")
+
+        def do_OPTIONS(self):
+            """Handle CORS preflight requests from Thunderbird MailExtension (moz-extension://)."""
+            self.send_response(204)
+            self._write_cors_headers()
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _base_url(self) -> str:
-            host_hdr = self.headers.get("Host")
-            if host_hdr:
-                return f"http://{host_hdr}"
             host, port = self.server.server_address[:2]
-            return f"http://{host}:{port}"
+            # Always canonicalize to 127.0.0.1 so OAuth redirect URIs never mismatch localhost vs 127.0.0.1
+            return f"http://127.0.0.1:{port}"
 
         def _send_json(self, payload: dict | list, status: int = 200):
             raw = json.dumps(payload, indent=2).encode("utf-8")
             self.send_response(status)
+            self._write_cors_headers()
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
             self.send_header("Cache-Control", "no-store")
@@ -303,7 +330,17 @@ def make_handler(store: EmploymaxingStore, automation: BackgroundAutomation | No
 
             if path == "/api/forms":
                 job_id = qs.get("job_id", [None])[0]
-                return self._send_json({"forms": store.list_form_submissions(job_id=job_id)})
+                forms = store.list_form_submissions(job_id=job_id)
+                for fm in forms:
+                    auto_js = generate_universal_autofill_js(fm.get("field_plan") or [])
+                    fm["autofill_bookmarklet"] = auto_js["bookmarklet"]
+                    fm["autofill_script"] = auto_js["script"]
+                cdp_cmd = find_interactive_browser()
+                return self._send_json({
+                    "forms": forms,
+                    "browser_cdp_available": bool(cdp_cmd),
+                    "detected_browser": " ".join(cdp_cmd) if cdp_cmd else "",
+                })
 
             if path == "/api/dorks":
                 roles = qs.get("roles", ["Software Engineer"])[0]
@@ -675,6 +712,8 @@ def make_handler(store: EmploymaxingStore, automation: BackgroundAutomation | No
                 if path == "/api/jobs":
                     slug = data.get("id") or re.sub(r'[^a-z0-9]+', '-', f"{data.get('company', 'company')}-{data.get('role', 'role')}".lower()).strip("-")
                     data["id"] = slug
+                    if data.get("url"):
+                        data["url"] = normalize_url(data["url"])
                     jdir = store.data_dir / "jobs" / slug
                     jdir.mkdir(parents=True, exist_ok=True)
                     data["folder_path"] = str(jdir)
@@ -728,6 +767,9 @@ def make_handler(store: EmploymaxingStore, automation: BackgroundAutomation | No
 
                 if path == "/api/forms/plan":
                     plan = build_transparent_form_plan(store, data["job_id"], data.get("form_url", ""))
+                    auto_js = generate_universal_autofill_js(plan.get("field_plan") or [])
+                    plan["autofill_bookmarklet"] = auto_js["bookmarklet"]
+                    plan["autofill_script"] = auto_js["script"]
                     return self._send_json(plan, 201)
 
                 m_fexec = re.match(r'^/api/forms/(\d+)/execute$', path)
